@@ -37,4 +37,12 @@ export
     MinMaxScaler, ZScoreScaler, 
     fit_pipeline, transform_input, transform_output
 
+
+# 3. Metrics ────────────────────────────────────────────────────────────────────────── #
+
+include("metrics/metrics.jl")
+
+export 
+    mse, rmse, nrmse, q2
+
 end

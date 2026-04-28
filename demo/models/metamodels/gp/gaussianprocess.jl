@@ -9,9 +9,6 @@ Next things the would be interresting to try out next:
     - probability box
 """
 
-run(`clear`)
-println("console cleared...")
-
 using SurrogateModelling
 using UncertaintyQuantification
 using Random
@@ -101,16 +98,23 @@ y_test = data_test[:, :y]
     X_test
 )
 
-SS_res = sum((y_test .- μ).^2)
-SS_tot = sum((y_test .- mean(y_test)).^2)
-Q2     = 1.0 - SS_res / SS_tot
-println("Q² = ", round(Q2, digits=6))
+y_true = y_test
+y_pred = μ
 
-mse = mean((y_test .- μ) .^ 2)
-println("MSE is:  $mse")
+mse_val     = mse(y_true, y_pred)
+rmse_val    = rmse(y_true, y_pred)
+nrmse_val   = nrmse(y_true, y_pred)
+nrmse_val_2 = nrmse(y_true, y_pred, method=:minmax)
+q2_val      = q2(y_true, y_pred)
 
+println("MSE:               $(round(mse_val, digits=5))")
+println("RMSE:              $(round(rmse_val, digits=5))")
+println("nRMSE (std):       $(round(nrmse_val, digits=5))")
+println("nRMSE (minmax):    $(round(nrmse_val_2, digits=5))")
+println("Q²:                $(round(q2_val, digits=5))")
 
 ##################################
+
 if length(x_names) == 1
     # Extract x values
     x_vals = X_test[:, :x]

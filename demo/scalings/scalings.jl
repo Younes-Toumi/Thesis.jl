@@ -1,6 +1,3 @@
-run(`clear`)
-println("console cleared...")
-
 using SurrogateModelling
 using UncertaintyQuantification
 using Random
