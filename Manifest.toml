@@ -2,7 +2,7 @@
 
 julia_version = "1.12.4"
 manifest_format = "2.0"
-project_hash = "4c227a7cc8fec8de994f3c1a863ee6be3fcad63b"
+project_hash = "da553a87c17bae743ecb2c78888de1f1078d849a"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f7304359109c768cf32dc5fa2d371565bb63b68a"
@@ -80,6 +80,12 @@ version = "1.1.3"
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 version = "1.1.2"
+
+[[deps.ArnoldiMethod]]
+deps = ["LinearAlgebra", "Random", "StaticArrays"]
+git-tree-sha1 = "d57bd3762d308bded22c3b82d033bff85f6195c6"
+uuid = "ec485272-7323-5ecc-a04f-4719b315124d"
+version = "0.4.0"
 
 [[deps.ArrayInterface]]
 deps = ["Adapt", "LinearAlgebra"]
@@ -392,6 +398,20 @@ version = "0.7.16"
     Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
     Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
+[[deps.DispatchDoctor]]
+deps = ["MacroTools", "Preferences"]
+git-tree-sha1 = "42cd00edaac86f941815fe557c1d01e11913e07c"
+uuid = "8d63f2c5-f18a-4cf2-ba9d-b3f60fc568c8"
+version = "0.4.28"
+
+    [deps.DispatchDoctor.extensions]
+    DispatchDoctorChainRulesCoreExt = "ChainRulesCore"
+    DispatchDoctorEnzymeCoreExt = "EnzymeCore"
+
+    [deps.DispatchDoctor.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
+
 [[deps.Distances]]
 deps = ["LinearAlgebra", "Statistics", "StatsAPI"]
 git-tree-sha1 = "c7e3a542b999843086e2f29dac96a618c105be1d"
@@ -462,6 +482,11 @@ deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "9cb7fe11da6adb8683cbacf8aa9b5237941e3a75"
 uuid = "2e619515-83b5-522b-bb60-26c02a35a201"
 version = "2.7.5+0"
+
+[[deps.ExprTools]]
+git-tree-sha1 = "27415f162e6028e81c72b82ef756bf321213b6ec"
+uuid = "e2ba6199-217a-4e67-a87a-7c52f15ade04"
+version = "0.1.10"
 
 [[deps.FFMPEG]]
 deps = ["FFMPEG_jll"]
@@ -626,6 +651,19 @@ git-tree-sha1 = "8a6dbda1fd736d60cc477d99f2e7a042acfa46e8"
 uuid = "3b182d85-2403-5c21-9c21-1e1f0cc25472"
 version = "1.3.15+0"
 
+[[deps.Graphs]]
+deps = ["ArnoldiMethod", "DataStructures", "Inflate", "LinearAlgebra", "Random", "SimpleTraits", "SparseArrays", "Statistics"]
+git-tree-sha1 = "7eb45fe833a5b7c51cf6d89c5a841d5967e44be3"
+uuid = "86223c79-3864-5bf0-83f7-82e725a168b6"
+version = "1.14.0"
+
+    [deps.Graphs.extensions]
+    GraphsSharedArraysExt = "SharedArrays"
+
+    [deps.Graphs.weakdeps]
+    Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+    SharedArrays = "1a1011a3-84de-559e-8e89-a11a2f7dc383"
+
 [[deps.Grisu]]
 git-tree-sha1 = "53bb909d1151e57e2484c3d1b53e19552b887fb2"
 uuid = "42e2da0e-8278-4e71-bc24-59509adca0fe"
@@ -654,6 +692,11 @@ deps = ["InteractiveUtils", "MacroTools"]
 git-tree-sha1 = "57e9ce6cf68d0abf5cb6b3b4abf9bedf05c939c0"
 uuid = "7869d1d1-7146-5819-86e3-90919afe41df"
 version = "0.4.15"
+
+[[deps.Inflate]]
+git-tree-sha1 = "d1b1b796e47d94588b3757fe84fbf65a5ec4a80d"
+uuid = "d25df0c9-e2be-5dd7-82c8-3ad0b3e990b9"
+version = "0.1.5"
 
 [[deps.InlineStrings]]
 git-tree-sha1 = "8f3d257792a522b4601c24a577954b0a8cd7334d"
@@ -937,6 +980,11 @@ git-tree-sha1 = "ec4f7fbeab05d7747bdf98eb74d130a2a2ed298d"
 uuid = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
 version = "1.2.0"
 
+[[deps.MistyClosures]]
+git-tree-sha1 = "d1a692e293c2a0dc8fda79c04cad60582f3d4de3"
+uuid = "dbe65cb8-6be2-42dd-bbc5-4196aaced4f4"
+version = "2.1.0"
+
 [[deps.Mmap]]
 uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 version = "1.11.0"
@@ -945,6 +993,48 @@ version = "1.11.0"
 git-tree-sha1 = "99dcbf9345f38d4f3f5280be6cea7781fcdc7b61"
 uuid = "272bfe72-f66c-432f-a94d-600f29493792"
 version = "1.0.2"
+
+[[deps.Mooncake]]
+deps = ["ADTypes", "ChainRules", "ChainRulesCore", "DispatchDoctor", "ExprTools", "Graphs", "LinearAlgebra", "MistyClosures", "PrecompileTools", "Random", "Test"]
+git-tree-sha1 = "450ff886563cdadbfb6c21efd3889aeece0d8f7d"
+uuid = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
+version = "0.5.24"
+
+    [deps.Mooncake.extensions]
+    MooncakeAllocCheckExt = "AllocCheck"
+    MooncakeBFloat16sExt = "BFloat16s"
+    MooncakeCUDAExt = "CUDA"
+    MooncakeDistributionsExt = "Distributions"
+    MooncakeDynamicExpressionsExt = "DynamicExpressions"
+    MooncakeFluxExt = "Flux"
+    MooncakeFunctionWrappersExt = "FunctionWrappers"
+    MooncakeJETExt = "JET"
+    MooncakeLogExpFunctionsExt = "LogExpFunctions"
+    MooncakeLuxLibExt = ["LuxLib", "MLDataDevices", "Static"]
+    MooncakeLuxLibNNlibExt = ["LuxLib", "NNlib"]
+    MooncakeLuxLibSLEEFPiratesExtension = ["LuxLib", "SLEEFPirates"]
+    MooncakeNNlibExt = ["NNlib", "LinearAlgebra"]
+    MooncakeSpecialFunctionsExt = "SpecialFunctions"
+    MooncakecuDNNExt = ["CUDA", "cuDNN"]
+
+    [deps.Mooncake.weakdeps]
+    AllocCheck = "9b6a8646-10ed-4001-bbdc-1d2f46dfbb1a"
+    BFloat16s = "ab4f0b2a-ad5b-11e8-123f-65d77653426b"
+    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+    Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+    DynamicExpressions = "a40a106e-89c9-4ca8-8020-a735e8728b6b"
+    Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+    FunctionWrappers = "069b7b12-0de2-55c6-9aab-29f3d0a68a2e"
+    GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
+    JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+    LogExpFunctions = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
+    LuxLib = "82251201-b29d-42c6-8e01-566dec8acb11"
+    MLDataDevices = "7e8f7934-dd98-4c1a-8fe8-92b47a384d40"
+    NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
+    SLEEFPirates = "476501e8-09a2-5ece-8869-fb82de89a1fa"
+    SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+    Static = "aedffcd0-7271-4cad-89d0-dc628f76c6d3"
+    cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
@@ -1339,6 +1429,12 @@ git-tree-sha1 = "f305871d2f381d21527c770d4788c06c097c9bc1"
 uuid = "777ac1f9-54b0-4bf8-805c-2214025038e7"
 version = "1.2.0"
 
+[[deps.SimpleTraits]]
+deps = ["InteractiveUtils", "MacroTools"]
+git-tree-sha1 = "be8eeac05ec97d379347584fa9fe2f5f76795bcb"
+uuid = "699a6c99-e7fa-54fc-8d76-47d257e15c1d"
+version = "0.9.5"
+
 [[deps.Sobol]]
 deps = ["DelimitedFiles", "Random"]
 git-tree-sha1 = "5a74ac22a9daef23705f010f72c81d6925b19df8"
@@ -1494,7 +1590,7 @@ uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
 version = "7.8.3+2"
 
 [[deps.SurrogateModelling]]
-deps = ["AbstractGPs", "DataFrames", "KernelFunctions", "LinearAlgebra", "Optim", "ParameterHandling", "Random", "Statistics", "UncertaintyQuantification", "Zygote"]
+deps = ["AbstractGPs", "DataFrames", "DifferentiationInterface", "KernelFunctions", "LinearAlgebra", "Mooncake", "Optim", "ParameterHandling", "Plots", "Random", "Statistics", "UncertaintyQuantification", "Zygote"]
 path = "."
 uuid = "48446d74-721d-438e-b46c-e6dedc4d0f53"
 version = "0.1.0"

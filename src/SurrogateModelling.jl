@@ -7,10 +7,23 @@ using DataFrames
 using Plots
 using Random
 using UncertaintyQuantification
+using DifferentiationInterface
+import Mooncake
 
 # 1. models ────────────────────────────────────────────────────────────────────────── #
 # 1.1. metamodels
-# 1.1.1. gp
+# 1.1.1. GPs and kernels
+
+# Kernel Related
+include("models/metamodels/gp/kernels/kernels.jl")
+include("models/metamodels/gp/kernels/Matern52.jl")
+include("models/metamodels/gp/kernels/Matern32.jl")
+include("models/metamodels/gp/kernels/SquaredExponential.jl")
+
+export
+    AbstractKernel, Matern52, Matern32, SquaredExponential
+
+# Gaussian Process
 
 using KernelFunctions
 using AbstractGPs
@@ -35,7 +48,8 @@ include("scalings/scaling_pipeline.jl")
 
 export 
     MinMaxScaler, ZScoreScaler, 
-    fit_pipeline, transform_input, transform_output
+    fit_pipeline, transform_input, transform_output, transform
+    inverse_mean, inverse_variance
 
 
 # 3. Metrics ────────────────────────────────────────────────────────────────────────── #
