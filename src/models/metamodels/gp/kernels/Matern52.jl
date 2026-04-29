@@ -1,10 +1,10 @@
-struct Matern52 <: AbstractKernel end
+struct GPMatern52 <: AbstractGPKernel end
 
-kernel_name(::Matern52) = "Matérn 5/2"
+kernel_name(::GPMatern52) = "Matérn 5/2"
  
-default_θ(::Matern52, X::Matrix, y::Vector) = default_ard_θ(X, y)
+default_θ(::GPMatern52, X::Matrix, y::Vector) = default_ard_θ(X, y)
 
-function build_kernel(::Matern52, θ::NamedTuple)
+function build_kernel(::GPMatern52, θ::NamedTuple)
     return θ.variance * with_lengthscale(Matern52Kernel(), θ.lengthscale)
 end
  

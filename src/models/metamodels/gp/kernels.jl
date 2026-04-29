@@ -9,18 +9,18 @@
 # Adding a new kernel = one new file, zero changes elsewhere.
 # ============================================================
 
-abstract type AbstractKernel end
+abstract type AbstractGPKernel end
 
 # ── Interface guards — clear error if a method is missing ─────
-function default_θ(k::AbstractKernel, ::Matrix, ::Vector)
+function default_θ(k::AbstractGPKernel, ::Matrix, ::Vector)
     error("default_θ not implemented for kernel $(typeof(k)). ")
 end
 
-function build_kernel(k::AbstractKernel, ::NamedTuple)
+function build_kernel(k::AbstractGPKernel, ::NamedTuple)
     error("build_kernel not implemented for kernel $(typeof(k)). ")
 end
 
-kernel_name(k::AbstractKernel) = string(typeof(k))  # fallback
+kernel_name(k::AbstractGPKernel) = string(typeof(k))  # fallback
 
 
 # ── Shared utilities used by all kernels ─────────────────────

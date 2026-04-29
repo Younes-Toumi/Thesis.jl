@@ -34,7 +34,7 @@ model = Model(
 # Sampling for: 1. train and 2. test #
 # ============================================================
 
-n_train, n_test = 200, 1000
+n_train, n_test = 80, 1000
 
 design_train = LatinHypercubeSampling(n_train)
 design_test = LatinHypercubeSampling(n_test)
@@ -51,34 +51,32 @@ X_names = [x.name for x in X]
 # ============================================================
 # Initial GP hyperparameters
 # # ============================================================
-# metamodel = GaussianProcess(data_train, :y)                                                         # default
-# metamodel = GaussianProcess(data_train, :y;  mean=GPConstMean())                                    # mean
-# metamodel = GaussianProcess(data_train, :y;  kernel=GPSquaredExponential())                         # kernel
-metamodel = GaussianProcess(data_train, :y;  mean=GPZeroMean(), kernel=GPSquaredExponential())        # mean + kernel
-
-fit!(metamodel)
-
-
-# # ============================================================
-# # Testing
-# # ============================================================
-
+# benchmark all means
 X_test = data_test[:, X_names]
 
-μ, σ = predict(
-    metamodel,
-    X_test
-)
 
-y_true = data_test[:, :y]
-y_pred = μ
+# benchmark compositions
+for k in [
+    GPMatern52(),
+    GPSquaredExponential(),
+    GPMatern52() + GPMatern32(),
+    GPMatern52() + GPSquaredExponential(),
+]
+    metamodel = GaussianProcess(data_train, :y; kernel=k)
+    fit!(metamodel)
+    μ, σ = predict(metamodel, X_test)
 
-mse_val     = mse(y_true, y_pred)
-rmse_val    = rmse(y_true, y_pred)
-nrmse_val   = nrmse(y_true, y_pred)
-q2_val      = q2(y_true, y_pred)
+    y_true = data_test[:, :y]
+    y_pred = μ
 
-println("MSE:               $(round(mse_val, digits=5))")
-println("RMSE:              $(round(rmse_val, digits=5))")
-println("nRMSE (std):       $(round(nrmse_val, digits=5))")
-println("Q²:                $(round(q2_val, digits=5))")
+    mse_val     = mse(y_true, y_pred)
+    rmse_val    = rmse(y_true, y_pred)
+    nrmse_val   = nrmse(y_true, y_pred)
+    q2_val      = q2(y_true, y_pred)
+
+    println("$(kernel_name(k)):")
+    println("MSE:               $(round(mse_val, digits=5))")
+    println("RMSE:              $(round(rmse_val, digits=5))")
+    println("nRMSE (std):       $(round(nrmse_val, digits=5))")
+    println("Q²:                $(round(q2_val, digits=5))\n")
+end

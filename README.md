@@ -16,4 +16,4 @@ Currently contains:
 
 Todo:
 - PCE: Sparce PCE
-- GP: build_mean?
+- GP: add piece wise constant mean?

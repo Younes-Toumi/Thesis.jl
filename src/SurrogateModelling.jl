@@ -8,6 +8,8 @@ using Plots
 using Random
 using UncertaintyQuantification
 using DifferentiationInterface
+using Clustering
+
 import Mooncake
 
 # 1. models ────────────────────────────────────────────────────────────────────────── #
@@ -19,19 +21,22 @@ include("models/metamodels/gp/kernels.jl")
 include("models/metamodels/gp/kernels/Matern52.jl")
 include("models/metamodels/gp/kernels/Matern32.jl")
 include("models/metamodels/gp/kernels/SquaredExponential.jl")
+include("models/metamodels/gp/kernels/Composite.jl")
 
 export
-    AbstractKernel, Matern52, Matern32, SquaredExponential
+    AbstractGPKernel, GPMatern52, GPMatern32, GPSquaredExponential, GPCompositeKernel,
+    kernel_name
 
 # Mean Related
 include("models/metamodels/gp/means.jl")
 include("models/metamodels/gp/means/ZeroMean.jl")
 include("models/metamodels/gp/means/ConstMean.jl")
-include("models/metamodels/gp/means/LinearMean.jl")
+
 
 export 
-    nothing
-    
+    AbstractGPMean, GPZeroMean, GPConstMean,
+    mean_name
+
 
 # Gaussian Process
 

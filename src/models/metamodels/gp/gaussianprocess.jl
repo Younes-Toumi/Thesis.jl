@@ -6,7 +6,8 @@ mutable struct GaussianProcess <: UQModel
     X::Matrix{Float64}
     y::Vector{Float64}
 
-    kernel:: AbstractKernel
+    mean:: AbstractGPMean
+    kernel:: AbstractGPKernel
     θ::NamedTuple
 
     posterior::Union{AbstractGPs.PosteriorGP, Nothing}
@@ -25,9 +26,10 @@ end
 function GaussianProcess(
     data::DataFrame,
     output::Symbol;
-    kernel::AbstractKernel          = Matern52(),
+    mean::AbstractGPMean          = GPZeroMean(),
+    kernel::AbstractGPKernel      = GPMatern52(),
     θ::Union{NamedTuple, Nothing} = nothing,
-    learn_noise::Bool               = false
+    learn_noise::Bool             = false
 )
 
     x_names = propertynames(data[:, Not(output)])
@@ -41,6 +43,7 @@ function GaussianProcess(
     return GaussianProcess(
         X,
         y,
+        mean,
         kernel,
         θ0,
         nothing,
@@ -59,13 +62,15 @@ end
 function fit!(gp::GaussianProcess)
     
     # TODO mean is fixed to 0 for now, maybe improuve?
-    mean = ConstMean(0.0)
     y_scale = var(gp.y)
     flat_θ0, _ = value_flatten(gp.θ)
+
+    mean = build_mean(gp.mean, gp.X, gp.y)
 
     function nlml(flat_θ)
         θ = gp.unflatten(flat_θ)
         kernel = build_kernel(gp.kernel, θ)
+        
         f = GP(mean, kernel)
 
         # TODO noise: fixed adaptive jitter for deterministic simulators learned parameter for noisy observations?
