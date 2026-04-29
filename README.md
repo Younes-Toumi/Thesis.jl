@@ -12,3 +12,8 @@ Currently contains:
 - Scalings:
 -   MinMaxScaler
 -   ZScoreScaler
+
+
+Todo:
+- PCE: Sparce PCE
+- GP: build_mean?

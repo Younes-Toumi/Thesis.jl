@@ -15,13 +15,23 @@ import Mooncake
 # 1.1.1. GPs and kernels
 
 # Kernel Related
-include("models/metamodels/gp/kernels/kernels.jl")
+include("models/metamodels/gp/kernels.jl")
 include("models/metamodels/gp/kernels/Matern52.jl")
 include("models/metamodels/gp/kernels/Matern32.jl")
 include("models/metamodels/gp/kernels/SquaredExponential.jl")
 
 export
     AbstractKernel, Matern52, Matern32, SquaredExponential
+
+# Mean Related
+include("models/metamodels/gp/means.jl")
+include("models/metamodels/gp/means/ZeroMean.jl")
+include("models/metamodels/gp/means/ConstMean.jl")
+include("models/metamodels/gp/means/LinearMean.jl")
+
+export 
+    nothing
+    
 
 # Gaussian Process
 

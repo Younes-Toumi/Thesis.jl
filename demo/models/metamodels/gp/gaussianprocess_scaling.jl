@@ -79,8 +79,8 @@ X_test_scaled = data_test_scaled[:, X_names]
 )
 
 # inverse transform
-μ = inverse_mean(pipeline, μ_scaled)
-σ = sqrt.(inverse_variance(pipeline, σ_scaled.^2))
+μ = SurrogateModelling.inverse_mean(pipeline, μ_scaled)
+σ = sqrt.(SurrogateModelling.inverse_variance(pipeline, σ_scaled.^2))
 
 y_true = data_test[:, :y]
 y_pred = μ
