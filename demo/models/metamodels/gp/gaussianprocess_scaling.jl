@@ -63,7 +63,7 @@ data_test_scaled  = SurrogateModelling.transform(pipeline, data_test, :y)
 # Initial GP hyperparameters
 # ============================================================
 
-metamodel = GaussianProcess(data_train_scaled, :y;  kernel=SquaredExponential())
+metamodel = GaussianProcess(data_train_scaled, :y;  kernel=GPSquaredExponential())
 fit!(metamodel)
 
 

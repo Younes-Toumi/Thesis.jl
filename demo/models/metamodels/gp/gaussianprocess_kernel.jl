@@ -59,8 +59,9 @@ X_test = data_test[:, X_names]
 for k in [
     GPMatern52(),
     GPSquaredExponential(),
-    GPMatern52() + GPMatern32(),
     GPMatern52() + GPSquaredExponential(),
+    0.25*GPMatern52() + 0.75*GPSquaredExponential(),
+    GPMatern52() * GPSquaredExponential(),
 ]
     metamodel = GaussianProcess(data_train, :y; kernel=k)
     fit!(metamodel)

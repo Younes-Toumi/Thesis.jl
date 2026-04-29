@@ -29,3 +29,27 @@ function build_kernel(k::GPCompositeKernel, θ::NamedTuple)
 
     return k.op === :sum ? reduce(+, built) : reduce(*, built)
 end
+
+
+
+struct ScaledGPKernel <: AbstractGPKernel
+    kernel ::AbstractGPKernel
+    scale  ::Float64
+end
+
+# scalar scaling
+Base.:*(a::Real, k::AbstractGPKernel) = ScaledGPKernel(k, a)
+Base.:*(k::AbstractGPKernel, a::Real) = ScaledGPKernel(k, a)
+
+
+kernel_name(k::ScaledGPKernel) = "$(k.scale) × $(kernel_name(k.kernel))"
+
+function default_θ(k::ScaledGPKernel, X::Matrix, y::Vector)
+    # scale the variance initialisation by the scalar
+    θ = default_θ(k.kernel, X, y)
+    return merge(θ, (variance = positive(k.scale * ParameterHandling.value(θ.variance)),))
+end
+
+function build_kernel(k::ScaledGPKernel, θ::NamedTuple)
+    return k.scale * build_kernel(k.kernel, θ)
+end
