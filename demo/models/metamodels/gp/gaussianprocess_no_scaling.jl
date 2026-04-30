@@ -54,10 +54,9 @@ X_names = [x.name for x in X]
 # metamodel = GaussianProcess(data_train, :y)                                                         # default
 # metamodel = GaussianProcess(data_train, :y;  mean=GPConstMean())                                    # mean
 # metamodel = GaussianProcess(data_train, :y;  kernel=GPSquaredExponential())                         # kernel
-metamodel = GaussianProcess(data_train, :y;  mean=GPZeroMean(), kernel=GPSquaredExponential())        # mean + kernel
+metamodel = GaussianProcess(data_train, :y;  mean=GPZeroMean(), kernel=GPSquaredExponential(), learn_noise=false)
 
-fit!(metamodel)
-
+@time "fit!" fit!(metamodel)  # 1st — includes Mooncake's initial trace
 
 # # ============================================================
 # # Testing
@@ -65,7 +64,7 @@ fit!(metamodel)
 
 X_test = data_test[:, X_names]
 
-μ, σ = predict(
+μ, σ = @time "predict" predict(
     metamodel,
     X_test
 )
@@ -78,6 +77,7 @@ rmse_val    = rmse(y_true, y_pred)
 nrmse_val   = nrmse(y_true, y_pred)
 q2_val      = q2(y_true, y_pred)
 
+println("\nmetrics:")
 println("MSE:               $(round(mse_val, digits=5))")
 println("RMSE:              $(round(rmse_val, digits=5))")
 println("nRMSE (std):       $(round(nrmse_val, digits=5))")

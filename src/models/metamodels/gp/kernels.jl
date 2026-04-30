@@ -53,9 +53,13 @@ function default_ard_θ(X::Matrix, y::Vector)
     l  = median_pairwise_distance(X)
     σ² = var(y)
     return (
-        lengthscale = param_positive(fill(l, d)),   # Vector → ARD
-        variance    = bounded(σ², 1e-7, 1e7), # bounded, not just positive
-        noise       = param_positive(0.01 * σ²),
+        lengthscale = param_bounded(fill(l, d), 1e-3, 1e2),   # Vector -> ARD
+        variance    = param_bounded(σ², 1e-3, 1e2), # bounded, not just positive
+
+        # Bound noise to a small fraction of output variance.
+        # Prevents the optimiser escaping into the noise = ∞, lengthscale=0 degeneracy.
+        noise       = param_bounded(1e-6, 1e-9, 0.1),
+
     )
 end
 
@@ -66,6 +70,6 @@ end
 #   2. param_bounded:   Constrains a parameter to (lo, hi). Use for parameters with known mathematical bounds.
 #   3. param_free:      Unconstrained parameter, x ∈ (-∞, ∞)
 
-param_positive(x)   = ParameterHandling.positive(x)
-param_bounded(x)    = ParameterHandling.bounded(x, lo, hi)
-param_free(x)       = x
+param_positive(x)        = ParameterHandling.positive(x)
+param_bounded(x, lo, hi) = ParameterHandling.bounded(x, lo, hi)
+param_free(x)            = x

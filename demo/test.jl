@@ -18,8 +18,8 @@ using PlotlyJS
 using DataFrames
 
 # 1. defining inputs X: X = [x₁, x₂]
-x1 = RandomVariable.(Uniform(-4.5, 4.5), :x1);
-x2 = RandomVariable.(Uniform(-4.5, 4.5), :x2);
+x1 = RandomVariable.(Uniform(-5, 5), :x1);
+x2 = RandomVariable.(Uniform(-5, 5), :x2);
 X = [x1, x2]
 
 # 2. defining :y y: y = x₁² + x₂²
@@ -29,7 +29,7 @@ model = Model(
 ) # himmelblau
 
 # 3. defining two sampling strategy
-design = FullFactorial([25, 25])
+design = LatinHypercubeSampling(100)
 
 # 4. generating training data
 data_train = sample(X, design) # uses the desing to sample input
@@ -81,28 +81,3 @@ PlotlyJS.plot(
     ),
     layout
 )
-
-# MSE:               30.18715
-# RMSE:              5.49428
-# nRMSE (std):       0.04991
-# Q²:                0.99751
-
-# MSE:               32.31937
-# RMSE:              5.68501
-# nRMSE (std):       0.05164
-# Q²:                0.99733
-
-# MSE:               32.43483
-# RMSE:              5.69516
-# nRMSE (std):       0.05173
-# Q²:                0.99732
-
-# MSE:               32.33395
-# RMSE:              5.6863
-# nRMSE (std):       0.05165
-# Q²:                0.99733
-
-# MSE:               32.36095
-# RMSE:              5.68867
-# nRMSE (std):       0.05167
-# Q²:                0.99733
