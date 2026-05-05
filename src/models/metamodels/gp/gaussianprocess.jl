@@ -182,7 +182,7 @@ function fit!(gp::GaussianProcess)
     end
 
 
-    ######
+    # TODO: refactor this into a seperate optimize.jl file
     # Run from default θ0 + n_restarts-1 random perturbations
     function run_optimization(flat_θ0)
         return optimize(
@@ -203,7 +203,7 @@ function fit!(gp::GaussianProcess)
     # Run from default θ0 + n_restarts-1 random perturbations
     flat_θ0, _ = value_flatten(gp.θ)
 
-    n_restarts = 20
+    n_restarts = 5
     results = map(1:n_restarts) do i
         println("RUN NUMBER $i AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n\n\n\n")
         θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.5 .* randn(length(flat_θ0))

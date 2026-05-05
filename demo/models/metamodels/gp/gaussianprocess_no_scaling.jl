@@ -1,14 +1,3 @@
-""" file2. jl written the 14-15.04.2026.
-This file explores a very basic gaussian process implementation. Also:
-    1. testing gp on 1d and 2d functions
-    2. estimate Q²
-    3. nice plot for 1d functions
-
-Next things the would be interresting to try out next:
-    - adaptive sampling
-    - probability box
-"""
-
 using SurrogateModelling
 using UncertaintyQuantification
 using Random

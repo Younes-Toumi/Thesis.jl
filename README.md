@@ -17,3 +17,23 @@ Currently contains:
 Todo:
 - PCE: Sparce PCE
 - GP: add piece wise constant mean?
+
+
+# TODO - GP:
+- include a seperate optimize.jl
+- how should each restart be done for hyperparams? just random?
+
+
+# TODO - PCE:
+- implement the PCE logic to have comparable surrogate models
+- add sparse functionality
+
+
+# TODO - Validation:
+- ???
+
+
+# TODO - Other stuff:
+- Bootstrap for PCE, RS, etc...
+- Adaptive sampling
+- PCK

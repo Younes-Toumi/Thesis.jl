@@ -12,9 +12,8 @@ using Clustering
 
 import Mooncake
 
-# 1. models ────────────────────────────────────────────────────────────────────────── #
-# 1.1. metamodels
-# 1.1.1. GPs and kernels
+# 1. metamodels ────────────────────────────────────────────────────────────────────────── #
+# 1.1. Gaussian Process
 
 # Kernel Related
 include("models/metamodels/gp/kernels.jl")
@@ -32,14 +31,12 @@ include("models/metamodels/gp/means.jl")
 include("models/metamodels/gp/means/ZeroMean.jl")
 include("models/metamodels/gp/means/ConstMean.jl")
 
-
 export 
     AbstractGPMean, GPZeroMean, GPConstMean,
     mean_name
 
 
-# Gaussian Process
-
+# GP Constructor Related
 using KernelFunctions
 using AbstractGPs
 using ParameterHandling
@@ -51,6 +48,27 @@ include("models/metamodels/gp/gaussianprocess.jl")
 export 
     GaussianProcess,
     fit!, predict
+
+
+# 1.2. Polynomial Chaos Expansion
+include("models/metamodels/pce/polynomialchaosexpansion.jl")
+
+export 
+    PolynomialChaosExpansion,
+    fit!, predict
+
+# Degree relared:
+include("models/metamodels/pce/degrees.jl")
+include("models/metamodels/pce/degrees/TotalDegree.jl")
+include("models/metamodels/pce/degrees/TensorProduct.jl")
+include("models/metamodels/pce/degrees/HyperbolicCross.jl")
+include("models/metamodels/pce/degrees/QBall.jl")
+
+export
+    AbstractPCEDegree,
+    TotalDegree, TensorProduct, HyperbolicCross, QBall,
+    n_terms, degree_name
+
 
 # 2. Scalings ────────────────────────────────────────────────────────────────────────── #
 
