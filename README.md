@@ -27,6 +27,8 @@ Todo:
 # TODO - PCE:
 - implement the PCE logic to have comparable surrogate models
 - add sparse functionality
+- add a default selection for bases
+- add max degree selection based on data
 
 
 # TODO - Validation:

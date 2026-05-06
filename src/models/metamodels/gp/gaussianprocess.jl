@@ -205,7 +205,7 @@ function fit!(gp::GaussianProcess)
 
     n_restarts = 5
     results = map(1:n_restarts) do i
-        println("RUN NUMBER $i AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n\n\n\n")
+        println("RUN NUMBER $i \n\n\n\n")
         θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.5 .* randn(length(flat_θ0))
         try
             run_optimization(θ_start)

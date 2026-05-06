@@ -36,26 +36,29 @@ Works for any concrete degree type that implements `isadmissible`.
 """
 function multivariate_indices(deg::AbstractPCEDegree, d::Int)
     max_size = BigInt(deg.p + 1)^d   # upper bound on iterations
-
-    idx       = zeros(Int, d)
+    idx       = zeros(Int, d) # starting with [0, 0, ..., 0]
     index_set = [copy(idx)]
 
-    deg.p == 0 && return index_set   # constant only
+    deg.p == 0 && return index_set   # if degree is 0 -> constant only
 
-    idx[1] += 1
+    idx[1] += 1 # starting from [1, 0, 0, ....]
 
     for _ in 1:max_size
+
+        # only keep indices that satisfy the degree rule
         if isadmissible(idx, deg)
             push!(index_set, copy(idx))
         end
 
-        # ── increment idx like a mixed-radix counter ──────────
+        # increment idx like a mixed-radix counter, checks for valid indices
         carry = true
         for i in 1:d
             if carry
                 idx[i] += 1
                 carry    = false
             end
+
+            # if new index is invalid reset that dimension to 0
             if !isadmissible(idx, deg)
                 idx[i] = 0
                 carry   = true

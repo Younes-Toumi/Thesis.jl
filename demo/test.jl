@@ -29,7 +29,7 @@ model = Model(
 ) # himmelblau
 
 # 3. defining two sampling strategy
-design = LatinHypercubeSampling(100)
+design = LatinHypercubeSampling(300)
 
 # 4. generating training data
 data_train = sample(X, design) # uses the desing to sample input

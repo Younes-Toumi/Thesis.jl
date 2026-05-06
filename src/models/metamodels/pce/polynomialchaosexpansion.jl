@@ -4,11 +4,20 @@ mutable struct PolynomialChaosExpansion <: UQModel
 
     y_symbol::Symbol
     x_names::Vector{Symbol}
+
+    bases::Vector{<:AbstractPCEBasis}
+    indices::Vector{Vector{Int}}
+
+    solver::AbstractPCESolver
+    coeffs::Union{Nothing, Vector{Float64}}
 end
 
 function PolynomialChaosExpansion(
     data::DataFrame,
     y_symbol::Symbol,
+    bases::Vector{<:AbstractPCEBasis},
+    degree::AbstractPCEDegree;
+    solver::AbstractPCESolver = LeastSquaresSolver()
 )
 
     x_names = propertynames(data[:, Not(y_symbol)])
@@ -16,35 +25,49 @@ function PolynomialChaosExpansion(
     X = Matrix(data[:, x_names])
     y = Vector(data[:, y_symbol])
 
-    println("Called from Thesis.jl")
+    d = length(bases)
+    indices = multivariate_indices(degree, d)
 
     return PolynomialChaosExpansion(
         X,
         y,
         y_symbol,
         x_names,
+        bases,
+        indices,
+        solver,
+        nothing
     )
 end
 
 
 function fit!(pce::PolynomialChaosExpansion)
+    A = build_design_matrix(pce.bases, pce.indices, pce.X)
+
+    pce.coeffs = solve(pce.solver, A, pce.y)
+
     return pce
 end
 
 function predict(pce::PolynomialChaosExpansion, Xnew::DataFrame)
- 
-    Xmat = Matrix(Xnew[:, gp.x_names])
-    Xvec = [Xmat[i, :] for i in 1:size(Xmat, 1)]
-    return nothing
+
+    Xmat = Matrix(Xnew[:, pce.x_names])
+
+    A_pred = build_design_matrix(pce.bases, pce.indices, Xmat)
+
+    return A_pred * pce.coeffs
 end
 
 
 function evaluate!(
-    pce       ::PolynomialChaosExpansion,
-    data     ::DataFrame;
-    mode     ::Symbol = :mean,
-    n_samples::Int    = 1
+    pce::PolynomialChaosExpansion,
+    data::DataFrame
 )
-    return nothing
+    pce.coeffs === nothing && error("Call fit!(pce) first.")
 
+    y_pred = predict(pce, data)
+
+    data[!, pce.y_symbol] = y_pred
+
+    return data
 end

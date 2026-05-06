@@ -39,7 +39,7 @@ X_names = [x.name for x in X]
 
 # ============================================================
 # Initial GP hyperparameters
-# # ============================================================
+# ============================================================
 # metamodel = GaussianProcess(data_train, :y)                                                         # default
 # metamodel = GaussianProcess(data_train, :y;  mean=GPConstMean())                                    # mean
 # metamodel = GaussianProcess(data_train, :y;  kernel=GPSquaredExponential())                         # kernel

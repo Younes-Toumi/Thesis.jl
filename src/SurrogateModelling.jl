@@ -9,6 +9,8 @@ using Random
 using UncertaintyQuantification
 using DifferentiationInterface
 using Clustering
+using FastGaussQuadrature
+using Distributions: Normal, Uniform, cdf, quantile
 
 import Mooncake
 
@@ -57,7 +59,7 @@ export
     PolynomialChaosExpansion,
     fit!, predict
 
-# Degree relared:
+# Degree related:
 include("models/metamodels/pce/degrees.jl")
 include("models/metamodels/pce/degrees/TotalDegree.jl")
 include("models/metamodels/pce/degrees/TensorProduct.jl")
@@ -67,9 +69,23 @@ include("models/metamodels/pce/degrees/QBall.jl")
 export
     AbstractPCEDegree,
     TotalDegree, TensorProduct, HyperbolicCross, QBall,
-    n_terms, degree_name
+    n_terms, degree_name, multivariate_indices
 
+# Basis related
+include("models/metamodels/pce/bases.jl")
+include("models/metamodels/pce/bases/Hermite.jl")
+include("models/metamodels/pce/bases/Legendre.jl")
 
+export
+    HermiteBasis, LegendreBasis,
+    build_design_matrix
+
+# Solver related:
+include("models/metamodels/pce/solvers.jl")
+include("models/metamodels/pce/solvers/OrdinaryLeastSqaures.jl")
+
+export
+    LeastSquaresSolver
 # 2. Scalings ────────────────────────────────────────────────────────────────────────── #
 
 using Statistics
