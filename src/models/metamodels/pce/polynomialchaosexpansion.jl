@@ -17,7 +17,7 @@ function PolynomialChaosExpansion(
     y_symbol::Symbol,
     bases::Vector{<:AbstractPCEBasis},
     degree::AbstractPCEDegree;
-    solver::AbstractPCESolver = LeastSquaresSolver()
+    solver::AbstractPCESolver = OLSSolver()
 )
 
     x_names = propertynames(data[:, Not(y_symbol)])
@@ -43,7 +43,7 @@ end
 
 function fit!(pce::PolynomialChaosExpansion)
     A = build_design_matrix(pce.bases, pce.indices, pce.X)
-
+    println(size(A))
     pce.coeffs = solve(pce.solver, A, pce.y)
 
     return pce

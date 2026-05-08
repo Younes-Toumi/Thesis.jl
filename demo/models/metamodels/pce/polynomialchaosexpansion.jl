@@ -41,9 +41,11 @@ X_names = [x.name for x in X]
 # Initial PCE Stuff
 # ============================================================
 bases = [SurrogateModelling.LegendreBasis(), SurrogateModelling.LegendreBasis()] # can be automated based on input
-degree = TotalDegree(6) # can be automated based on availabel samples
+degree = TotalDegree(50) # can be automated based on availabel samples
+solver = SurrogateModelling.LASSOSolver(λ=1e1)
+# solver = SurrogateModelling.OLSSolver()
 
-metamodel = SurrogateModelling.PolynomialChaosExpansion(data_train, :y, bases, degree)
+metamodel = SurrogateModelling.PolynomialChaosExpansion(data_train, :y, bases, degree; solver=solver)
 @time "fit!" fit!(metamodel)
 
 # ============================================================
@@ -70,3 +72,11 @@ println("MSE:               $(round(mse_val, digits=5))")
 println("RMSE:              $(round(rmse_val, digits=5))")
 println("nRMSE (std):       $(round(nrmse_val, digits=5))")
 println("Q²:                $(round(q2_val, digits=5))")
+
+
+n_nonzero = count(!iszero, metamodel.coeffs)
+n_zero = count(iszero, metamodel.coeffs)
+
+println("coeffs for λ=0: $(metamodel.coeffs)\n")
+println("Nonzero elements: ", n_nonzero)
+println("Zero elements: ", n_zero)

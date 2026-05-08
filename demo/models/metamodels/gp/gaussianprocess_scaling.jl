@@ -34,7 +34,7 @@ model = Model(
 # Sampling for: 1. train and 2. test #
 # ============================================================
 
-n_train, n_test = 80, 1000
+n_train, n_test = 100, 1000
 
 design_train = LatinHypercubeSampling(n_train)
 design_test = LatinHypercubeSampling(n_test)

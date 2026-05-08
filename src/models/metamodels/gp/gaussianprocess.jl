@@ -171,11 +171,11 @@ function fit!(gp::GaussianProcess)
     
         val = -logpdf(fx, gp.y) # negative because Optim.jl minimises
         
-        println(
-            "nlml val: $(round.(val, digits=4)) ", 
-            "lengthscale: $(round.(θ.lengthscale, digits=4)) ",
-            "variance: $(round.(θ.variance, digits=4)) ",
-            "noise: $(round.(θ.noise, digits=4))")
+        # println(
+        #     "nlml val: $(round.(val, digits=4)) ", 
+        #     "lengthscale: $(round.(θ.lengthscale, digits=4)) ",
+        #     "variance: $(round.(θ.variance, digits=4)) ",
+        #     "noise: $(round.(θ.noise, digits=4))")
 
         return val
 
@@ -203,9 +203,9 @@ function fit!(gp::GaussianProcess)
     # Run from default θ0 + n_restarts-1 random perturbations
     flat_θ0, _ = value_flatten(gp.θ)
 
-    n_restarts = 5
+    n_restarts = 1
     results = map(1:n_restarts) do i
-        println("RUN NUMBER $i \n\n\n\n")
+        # println("RUN NUMBER $i \n\n\n\n")
         θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.5 .* randn(length(flat_θ0))
         try
             run_optimization(θ_start)

@@ -53,11 +53,6 @@ export
 
 
 # 1.2. Polynomial Chaos Expansion
-include("models/metamodels/pce/polynomialchaosexpansion.jl")
-
-export 
-    PolynomialChaosExpansion,
-    fit!, predict
 
 # Degree related:
 include("models/metamodels/pce/degrees.jl")
@@ -77,15 +72,26 @@ include("models/metamodels/pce/bases/Hermite.jl")
 include("models/metamodels/pce/bases/Legendre.jl")
 
 export
-    HermiteBasis, LegendreBasis,
+    AbstractPCEBasis, HermiteBasis, LegendreBasis,
     build_design_matrix
 
 # Solver related:
 include("models/metamodels/pce/solvers.jl")
-include("models/metamodels/pce/solvers/OrdinaryLeastSqaures.jl")
+include("models/metamodels/pce/solvers/OLS.jl")
+include("models/metamodels/pce/solvers/LASSO.jl")
 
 export
-    LeastSquaresSolver
+    OSLSolver, LASSOSolver
+
+
+# Constructor Related
+include("models/metamodels/pce/polynomialchaosexpansion.jl")
+
+export 
+    PolynomialChaosExpansion,
+    fit!, predict
+
+
 # 2. Scalings ────────────────────────────────────────────────────────────────────────── #
 
 using Statistics

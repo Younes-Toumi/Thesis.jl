@@ -36,6 +36,10 @@ Todo:
 
 
 # TODO - Other stuff:
-- Bootstrap for PCE, RS, etc...
+- Bootstrap for variance estimation for PCE, RS, etc...
 - Adaptive sampling
 - PCK
+
+# Possible innovative ideas?
+- Symbolic regression based construction of kernel?
+- k-means for mean in GP?
