@@ -1,14 +1,3 @@
-""" file2. jl written the 14-15.04.2026.
-This file explores a very basic gaussian process implementation. Also:
-    1. testing gp on 1d and 2d functions
-    2. estimate Q²
-    3. nice plot for 1d functions
-
-Next things the would be interresting to try out next:
-    - adaptive sampling
-    - probability box
-"""
-
 using SurrogateModelling
 using UncertaintyQuantification
 using Random
@@ -46,7 +35,8 @@ evaluate!(model, data_train)
 evaluate!(model, data_test)
 
 X_names = [x.name for x in X]
-
+X_test = data_test[:, X_names]
+y_test = data_test[:, :y]
 
 # ============================================================
 # Scaling datasets
@@ -58,39 +48,42 @@ pipeline = fit_pipeline(data_train, :y, MinMaxScaler, ZScoreScaler)
 data_train_scaled = SurrogateModelling.transform(pipeline, data_train, :y)
 data_test_scaled  = SurrogateModelling.transform(pipeline, data_test, :y)
 
+X_test_scaled = data_test_scaled[:, X_names]
+
 
 # ============================================================
 # Initial GP hyperparameters
 # ============================================================
+# TODO: revise automatic parameter selection
+metamodels = [
+    GaussianProcess(data_train_scaled, :y),
+    GaussianProcess(data_train_scaled, :y;  mean=GPConstMean()),
+    GaussianProcess(data_train_scaled, :y;  kernel=GPMatern52()), 
+    GaussianProcess(data_train_scaled, :y;  kernel=0.25*GPMatern52() + 0.75*GPSquaredExponential()), # GPMatern52() * GPSquaredExponential() works too
+]
 
-metamodel = GaussianProcess(data_train_scaled, :y;  mean=GPZeroMean(), kernel=GPSquaredExponential(), learn_noise=false)
-fit!(metamodel)
+messages = [
+    "Normal GP: default mean (zero) and kernel (squared exponential)",
+    "Normal GP: with constant mean instead of zeromean",
+    "Normal GP: with GPMatern52 kernel",
+    "Normal GP: with composite kernel"
+]
+
+for (metamodel, message) in zip(metamodels, messages)
+    println("\n============================================================")
+    println("$message")
+    println("============================================================\n")
+
+    @time "fit!" fit!(metamodel)
+    μ_scaled, σ_scaled = @time "predict" predict(metamodel, X_test_scaled)
+
+    μ = SurrogateModelling.inverse_mean(pipeline, μ_scaled)
+    σ = sqrt.(SurrogateModelling.inverse_variance(pipeline, σ_scaled.^2))
 
 
-# # ============================================================
-# # Testing
-# # ============================================================
+    global y_pred = μ
 
-X_test_scaled = data_test_scaled[:, X_names]
+    println("MSE:               $(round(mse(y_test, y_pred), digits=5))")
+    println("Q²:                $(round(q2(y_test, y_pred), digits=5))")
 
-μ_scaled, σ_scaled = predict(
-    metamodel,
-    X_test_scaled
-)
-
-# inverse transform
-μ = SurrogateModelling.inverse_mean(pipeline, μ_scaled)
-σ = sqrt.(SurrogateModelling.inverse_variance(pipeline, σ_scaled.^2))
-
-y_true = data_test[:, :y]
-y_pred = μ
-
-mse_val     = mse(y_true, y_pred)
-rmse_val    = rmse(y_true, y_pred)
-nrmse_val   = nrmse(y_true, y_pred)
-q2_val      = q2(y_true, y_pred)
-
-println("MSE:               $(round(mse_val, digits=5))")
-println("RMSE:              $(round(rmse_val, digits=5))")
-println("nRMSE (std):       $(round(nrmse_val, digits=5))")
-println("Q²:                $(round(q2_val, digits=5))")
+end

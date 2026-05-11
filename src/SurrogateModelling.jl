@@ -18,20 +18,20 @@ import Mooncake
 # 1.1. Gaussian Process
 
 # Kernel Related
-include("models/metamodels/gp/kernels.jl")
-include("models/metamodels/gp/kernels/Matern52.jl")
-include("models/metamodels/gp/kernels/Matern32.jl")
-include("models/metamodels/gp/kernels/SquaredExponential.jl")
-include("models/metamodels/gp/kernels/Composite.jl")
+include("metamodels/gp//kernels/kernels.jl")
+include("metamodels/gp/kernels/Matern52.jl")
+include("metamodels/gp/kernels/Matern32.jl")
+include("metamodels/gp/kernels/SquaredExponential.jl")
+include("metamodels/gp/kernels/Composite.jl")
 
 export
     AbstractGPKernel, GPMatern52, GPMatern32, GPSquaredExponential, GPCompositeKernel,
     kernel_name
 
 # Mean Related
-include("models/metamodels/gp/means.jl")
-include("models/metamodels/gp/means/ZeroMean.jl")
-include("models/metamodels/gp/means/ConstMean.jl")
+include("metamodels/gp/means/means.jl")
+include("metamodels/gp/means/ZeroMean.jl")
+include("metamodels/gp/means/ConstMean.jl")
 
 export 
     AbstractGPMean, GPZeroMean, GPConstMean,
@@ -45,7 +45,7 @@ using ParameterHandling
 using Optim
 using Zygote
 
-include("models/metamodels/gp/gaussianprocess.jl")
+include("metamodels/gp/gaussianprocess.jl")
 
 export 
     GaussianProcess,
@@ -55,11 +55,11 @@ export
 # 1.2. Polynomial Chaos Expansion
 
 # Degree related:
-include("models/metamodels/pce/degrees.jl")
-include("models/metamodels/pce/degrees/TotalDegree.jl")
-include("models/metamodels/pce/degrees/TensorProduct.jl")
-include("models/metamodels/pce/degrees/HyperbolicCross.jl")
-include("models/metamodels/pce/degrees/QBall.jl")
+include("metamodels/pce/degrees/degrees.jl")
+include("metamodels/pce/degrees/TotalDegree.jl")
+include("metamodels/pce/degrees/TensorProduct.jl")
+include("metamodels/pce/degrees/HyperbolicCross.jl")
+include("metamodels/pce/degrees/QBall.jl")
 
 export
     AbstractPCEDegree,
@@ -67,25 +67,26 @@ export
     n_terms, degree_name, multivariate_indices
 
 # Basis related
-include("models/metamodels/pce/bases.jl")
-include("models/metamodels/pce/bases/Hermite.jl")
-include("models/metamodels/pce/bases/Legendre.jl")
+include("metamodels/pce/bases/bases.jl")
+include("metamodels/pce/bases/Hermite.jl")
+include("metamodels/pce/bases/Legendre.jl")
 
 export
     AbstractPCEBasis, HermiteBasis, LegendreBasis,
     build_design_matrix
 
 # Solver related:
-include("models/metamodels/pce/solvers.jl")
-include("models/metamodels/pce/solvers/OLS.jl")
-include("models/metamodels/pce/solvers/LASSO.jl")
+include("metamodels/pce/solvers/solvers.jl")
+include("metamodels/pce/solvers/OLS.jl")
+include("metamodels/pce/solvers/LASSO.jl")
 
 export
-    OSLSolver, LASSOSolver
+    OSLSolver, LASSOSolver,
+    solver_name
 
 
 # Constructor Related
-include("models/metamodels/pce/polynomialchaosexpansion.jl")
+include("metamodels/pce/polynomialchaosexpansion.jl")
 
 export 
     PolynomialChaosExpansion,

@@ -83,7 +83,7 @@ function GaussianProcess(
     data::DataFrame,
     y_symbol::Symbol;
     mean::AbstractGPMean          = GPZeroMean(),
-    kernel::AbstractGPKernel      = GPMatern52(),
+    kernel::AbstractGPKernel      = GPSquaredExponential(),
     θ::Union{NamedTuple, Nothing} = nothing,
     learn_noise::Bool             = false
 )
@@ -195,7 +195,7 @@ function fit!(gp::GaussianProcess)
             end,
             flat_θ0,
             LBFGS(),
-            Optim.Options(show_trace=false, iterations=50);
+            Optim.Options(show_trace=false, iterations=100);
             inplace=true
         )
     end
@@ -203,10 +203,10 @@ function fit!(gp::GaussianProcess)
     # Run from default θ0 + n_restarts-1 random perturbations
     flat_θ0, _ = value_flatten(gp.θ)
 
-    n_restarts = 1
+    n_restarts = 5
     results = map(1:n_restarts) do i
         # println("RUN NUMBER $i \n\n\n\n")
-        θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.5 .* randn(length(flat_θ0))
+        θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.2 .* randn(length(flat_θ0))
         try
             run_optimization(θ_start)
         catch

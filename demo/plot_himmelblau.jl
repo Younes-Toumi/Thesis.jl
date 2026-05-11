@@ -22,14 +22,14 @@ x1 = RandomVariable.(Uniform(-5, 5), :x1);
 x2 = RandomVariable.(Uniform(-5, 5), :x2);
 X = [x1, x2]
 
-# 2. defining :y y: y = x₁² + x₂²
+# 2. defining :y
 model = Model(
     rv -> (rv.x1 .^ 2 .+ rv.x2 .- 11) .^ 2 .+ (rv.x1 .+ rv.x2 .^ 2 .- 7) .^ 2,
     :y
 ) # himmelblau
 
 # 3. defining two sampling strategy
-design = LatinHypercubeSampling(300)
+design = LatinHypercubeSampling(500)
 
 # 4. generating training data
 data_train = sample(X, design) # uses the desing to sample input

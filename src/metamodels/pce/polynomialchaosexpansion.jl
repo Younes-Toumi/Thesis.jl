@@ -43,7 +43,6 @@ end
 
 function fit!(pce::PolynomialChaosExpansion)
     A = build_design_matrix(pce.bases, pce.indices, pce.X)
-    println(size(A))
     pce.coeffs = solve(pce.solver, A, pce.y)
 
     return pce

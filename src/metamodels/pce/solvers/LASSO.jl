@@ -6,6 +6,9 @@ mutable struct LASSOSolver <: AbstractPCESolver
     max_steps:: Int
 end
 
+solver_name(::LASSOSolver) = "LASSO"
+
+
 # Convenience constructor with sensible defaults
 function LASSOSolver(; λ=nothing, tol=1e-8, max_steps=500)
     return LASSOSolver(λ, tol, max_steps)
@@ -17,10 +20,9 @@ function soft_threshold(z::Float64, λ::Float64)::Float64
     return sign(z) * max(abs(z) - λ, 0)
 end
 
-function lambda_grid(A_n::Matrix, y::Vector; n_lambdas::Int=50, eps::Float64=1e-4)
+function lambda_grid(A_n::Matrix, y::Vector; n_lambdas::Int=100, eps::Float64=1e-6)
     λ_max = maximum(abs.(A_n' * y))
     λ_min = λ_max * eps
-    println("[min, max] = [$(λ_min), $(λ_max)]")
     return exp.(range(log(λ_max), log(λ_min), length=n_lambdas))
 end
 
