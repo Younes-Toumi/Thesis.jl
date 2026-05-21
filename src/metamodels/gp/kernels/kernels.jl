@@ -53,8 +53,8 @@ function default_ard_θ(X::Matrix, y::Vector)
     l  = median_pairwise_distance(X)
     σ² = var(y)
     return (
-        lengthscale = param_bounded(fill(l, d), 1e-6, 1e6),   # Vector -> ARD
-        variance    = param_bounded(σ², 1e-8, 1e8), # bounded, not just positive
+        lengthscale = param_bounded(fill(l, d), 1e-9, 1e9),   # Vector -> ARD
+        variance    = param_bounded(σ², 1e-9, 1e9), # bounded, not just positive
 
         # Bound noise to a small fraction of output variance.
         # Prevents the optimiser escaping into the noise = ∞, lengthscale=0 degeneracy.

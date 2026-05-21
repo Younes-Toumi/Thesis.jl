@@ -1,23 +1,21 @@
-using SurrogateModelling
 using UncertaintyQuantification
 using Random
 using DataFrames
-using ParameterHandling
-using LinearAlgebra
 Random.seed!(42)
 
 
 # ============================================================
 # Inputs + Model
 # ============================================================
-x1 = RandomVariable.(Normal(0, 1), :x1)
-x2 = RandomVariable.(Uniform(-5, 5), :x2)
-x3 = RandomVariable.(Uniform(-5, 5), :x3)
+
+x1 = RandomVariable(Normal(0, 1), :x1)
+x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.3, 1.8), :σ => 2.0)), :x2)
+x3 = IntervalVariable(-0.5, 1.3, :x3)
 
 X = [x1, x2, x3]
 
 model = Model(
-    rv -> rv.x1 .* (rv.x2.^2 .+ rv.x2 + cos.(π .* rv.x3) .- 7),
+    rv -> rv.x1 .* ((rv.x2 .* rv.x2) .+ rv.x2 + cos.(π .* rv.x3) .- 7),
     :y
 )
 
@@ -30,6 +28,4 @@ design_train = MonteCarlo(n_train)
 
 data_train = sample(X, design_train)
 
-evaluate!(model, data_train)
-
-X_names = [x.name for x in X]
+@time propagate_intervals!(model, data_train)

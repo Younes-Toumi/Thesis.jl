@@ -115,4 +115,11 @@ include("metrics/metrics.jl")
 export 
     mse, rmse, nrmse, q2
 
+
+# 4. Adaptive Sampling
+include("adaptive/expectedimprouvement.jl")
+
+export
+    EI, propose_next
+
 end
