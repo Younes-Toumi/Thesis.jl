@@ -6,12 +6,10 @@ using Distributions
 using ParameterHandling
 using LinearAlgebra
 
-Random.seed!(42)
-
 function pso_optimize(f::Function,
                       initial_particles::Matrix{Float64},
                       bounds::Matrix{Float64};
-                      max_iter::Int = 200,
+                      max_iter::Int = 100,
                       w::Float64 = 0.8,
                       c1::Float64 = 1.5,
                       c2::Float64 = 1.5,
@@ -39,7 +37,6 @@ function pso_optimize(f::Function,
     better(a, b) = mode == :max ? (a > b) : (a < b)
 
     for iter in 1:max_iter
-
         for i in 1:n_particles
 
             r1 = rand(dim)
@@ -104,10 +101,6 @@ analytical_variance(x1, σ) = σ^2*(x1^2 + 2*x1 + 1) + x1^2 + 2*x1 - (x1 + 1)^2 
 f(v) = analytical_variance(v[1], v[2])
 
 
-bounds = [
-    x1_LOWER   θ_σ_LOWER
-    x1_UPPER   θ_σ_UPPER
-]
 
 # ============================================================
 # Augmented space definition
@@ -121,11 +114,16 @@ bounds = [
 # ============================================================
 const μ_FIXED = 0.0
 
-const x1_UPPER = 1.0
-const x1_LOWER = -1.0
+const x1_UPPER = 1.5
+const x1_LOWER = -0.5
 
 const θ_σ_UPPER = 1.5
 const θ_σ_LOWER = 0.5
+
+bounds = [
+    x1_LOWER   θ_σ_LOWER
+    x1_UPPER   θ_σ_UPPER
+]
 
 """
     inverse_cdf_x2(u2, θ_σ)
@@ -177,7 +175,7 @@ initial_swarm = hcat(data_aug_train.x1, data_aug_train.θ_σ)
 
 best_x, best_val, history =
     pso_optimize(f, initial_swarm, bounds;
-                 max_iter=200,
+                 max_iter=100,
                  mode=:max)
 
 all_particles = reduce(vcat, history)
@@ -194,7 +192,6 @@ n_σ = 500
 x1_grid = range(x1_LOWER, x1_UPPER, length=n_x1)
 σ_grid  = range(θ_σ_LOWER, θ_σ_UPPER, length=n_σ)
 
-MeanSurface = zeros(n_x1, n_σ)
 VarSurface  = zeros(n_x1, n_σ)
 
 # ============================================================
@@ -249,7 +246,7 @@ scatter!(plt,
     alpha=1.0,
     marker=:cross,
     ms=7,
-    color=:white
+    color=:green
 )
 
 scatter!(plt,
@@ -262,6 +259,8 @@ scatter!(plt,
 )
 
 
-println("V range: [$(round(minimum(VarSurface), digits=2)),  $(round(maximum(VarSurface), digits=2))]")
+println("V range: [$(round(minimum(VarSurface), digits=5)),  $(round(maximum(VarSurface), digits=5))]")
+println("best val: $(round(best_val, digits=5))")
+
 
 display(plt)
