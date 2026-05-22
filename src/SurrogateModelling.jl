@@ -117,9 +117,8 @@ export
 
 
 # 4. Adaptive Sampling
-include("adaptive/expectedimprouvement.jl")
+include("adaptive/particleswarmoptimization.jl")
 
 export
-    EI, propose_next
-
+    pso_optimize
 end
