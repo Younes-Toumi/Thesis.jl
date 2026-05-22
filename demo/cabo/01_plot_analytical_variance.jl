@@ -9,70 +9,70 @@ using LinearAlgebra
 Random.seed!(42)
 
 # ============================================================
-# True model — operates on physical inputs (x1, x2, x3)
+# True model — operates on physical inputs (x1, x2)
 # ============================================================
-analytical_model(x1, x2, x3) = x1 .* (x2.^2 .+ x2 .+ cos.(π .* x3) .- 7)
-analytical_variance(x3, μ) = μ.^4 .+ 2 .* μ.^3 .+ 2 .* μ.^2 .* cos.(pi .* x3) .+ 11 .* μ.^2 .+ 2 .* μ .* cos.(pi .* x3) .+ 10 .* μ .+ cos.(pi .* x3).^2 .- 6 .* cos.(pi .* x3) .+ 45
-
+analytical_model(x1, x2) = x1 .+ x2 .+x1 .* x2 .+ 1
+analytical_variance(x1, σ) = σ^2*(x1^2 + 2*x1 + 1) + x1^2 + 2*x1 - (x1 + 1)^2 + 1
 # ============================================================
 # Augmented space definition
 #
-#   x1  ~ N(0,1)                precise PDF      → sample normally
 #   u2  ~ U(0,1)                auxiliary        → inverse CDF surrogate
-#   x3  ∈ [-0.5, 1.3]           interval         → sample uniformly over bounds
-#   θ_μ ∈ [-1.3,  1.8]          p-box parameter  → sample uniformly over bounds
+#   x1  ∈ [-1.0, 1.0]           interval         → sample uniformly over bounds
+#   θ_σ ∈ [-1.0,  1.0]          p-box parameter  → sample uniformly over bounds
 #
-#   Physical x2 is recovered as: x2 = F⁻¹(u2; θ_μ, σ=2.0)
-#   This is the Rosenblatt transform — makes x2 a deterministic function of (u2, θ_μ)
+#   Physical x2 is recovered as: x2 = F⁻¹(u2; μ, θ_σ)
+#   This is the Rosenblatt transform — makes x2 a deterministic function of (u2, θ_σ)
 # ============================================================
-const σ_FIXED = 2.0  # known σ of the p-box; only μ is uncertain
+const μ_FIXED = 0.0
+
+const x1_UPPER = 1.0
+const x1_LOWER = -1.0
+
+const θ_σ_UPPER = 1.5
+const θ_σ_LOWER = 0.5
 
 """
-    inverse_cdf_x2(u2, θ_μ; σ=σ_FIXED)
+    inverse_cdf_x2(u2, θ_σ)
 
-Recover the physical x2 from the auxiliary uniform u2 and the p-box parameter θ_μ
+Recover the physical x2 from the auxiliary uniform u2 and the p-box parameter θ_σ
 via the inverse Normal CDF.
 """
-inverse_cdf_x2(u2, θ_μ; σ=σ_FIXED) = quantile.(Normal.(θ_μ, σ), u2)
+inverse_cdf_x2(u2, θ_σ; μ=μ_FIXED) = quantile.(Normal.(μ, θ_σ), u2)
 
-# ============================================================
-# Latin Hypercube sampling in augmented space
-# (manual LHS across 4 dimensions: x1, u2, x3, θ_μ)
+
 # ============================================================
 function mc_augmented(n::Int)
-    pts = rand(n, 4)
+    pts = rand(n, 3)
 
-    x1_raw = quantile(Normal(0, 1), pts[:, 1])
-    u2_raw = pts[:, 2]
-    x3_raw = -0.5 .+ (1.3 - -0.5) .* pts[:, 3]
-    θμ_raw = -1.3 .+ (1.8 - -1.3) .* pts[:, 4]
+    u2_raw = pts[:, 1]
+    x1_raw = x1_LOWER .+ (x1_UPPER - x1_LOWER) .* pts[:, 2]
+    θσ_raw = θ_σ_LOWER .+ (θ_σ_UPPER - θ_σ_LOWER) .* pts[:, 3]
 
-    return x1_raw, u2_raw, x3_raw, θμ_raw
+    return x1_raw, u2_raw, θσ_raw
 end
 
 # ============================================================
 # Build initial design D₀ and evaluate true model
 # ============================================================
 
-x_names = [:x1, :u2, :x3, :θ_μ]
+x_names = [:x1, :u2, :θ_σ]
 
-n_train = 30   # paper uses ~2(d+1)–5(d+1) for d=4 → 10–25 is reasonable
+n_train = 20   # paper uses ~2(d+1)–5(d+1) for d=4 → 10–25 is reasonable
 
-x1_train, u2_train, x3_train, θ_μ_train = mc_augmented(n_train)
+x1_train, u2_train, θ_σ_train = mc_augmented(n_train)
 
 # Recover physical x2 via inverse CDF — this is what the true model sees
-x2_train = inverse_cdf_x2(u2_train, θ_μ_train)
+x2_train = inverse_cdf_x2(u2_train, θ_σ_train)
 
 # Evaluate true model at physical inputs
-y_train = analytical_model(x1_train, x2_train, x3_train)
+y_train = analytical_model(x1_train, x2_train)
 
 
-# Augmented training DataFrame: GP trains on (x1, u2, x3, θ_μ) — NOT on x2 directly
+# Augmented training DataFrame: GP trains on (x1, u2, θ_σ) — NOT on x2 directly
 data_aug_train = DataFrame(
     :x1  => x1_train,
     :u2  => u2_train,
-    :x3  => x3_train,
-    :θ_μ => θ_μ_train,
+    :θ_σ => θ_σ_train,
     :y   => y_train
 )
 
@@ -80,24 +80,24 @@ using Plots, Distributions, Statistics
 
 
 # ============================================================
-# Grid over epistemic space (x3, θμ)
+# Grid over epistemic space (x1, θσ)
 # ============================================================
-n_x3 = 100
-n_μ = 100
+n_x1 = 500
+n_σ = 500
 
-x3_grid = range(-0.5, 1.3, length=n_x3)
-μ_grid  = range(-1.3, 1.8, length=n_μ)
+x1_grid = range(x1_LOWER, x1_UPPER, length=n_x1)
+σ_grid  = range(θ_σ_LOWER, θ_σ_UPPER, length=n_σ)
 
-MeanSurface = zeros(n_x3, n_μ)
-VarSurface  = zeros(n_x3, n_μ)
+MeanSurface = zeros(n_x1, n_σ)
+VarSurface  = zeros(n_x1, n_σ)
 
 # ============================================================
 # Compute conditional moments
 # ============================================================
-for (i, x3_v) in enumerate(x3_grid)
-    for (j, μ_v) in enumerate(μ_grid)
+for (i, x1_v) in enumerate(x1_grid)
+    for (j, σ_v) in enumerate(σ_grid)
 
-        Vy = analytical_variance(x3_v, μ_v)
+        Vy = analytical_variance(x1_v, σ_v)
 
         VarSurface[i, j]  = Vy
     end
@@ -106,19 +106,19 @@ end
 # Heatmap
 # ============================================================
 plt = heatmap(
-    x3_grid,
-    μ_grid,
+    x1_grid,
+    σ_grid,
     VarSurface,
-    xlabel="x3",
-    ylabel="θ_μ",
+    xlabel="x1",
+    ylabel="θ_σ",
     c=:thermal,
-    title="Conditional response variance V_y(x3, μ)",
+    title="Conditional response variance V_y(x1, σ)",
     colorbar=true
 )
 
-# ── overlay the initial training points (x3, θ_μ columns from data_aug) ──────
+# ── overlay the initial training points (x1, θ_σ columns from data_aug) ──────
 scatter!(plt,
-    data_aug_train.x3, data_aug_train.θ_μ;
+    data_aug_train.x1, data_aug_train.θ_σ;
     marker = :diamond, color = :cyan, ms = 5,
     label  = "Initial samples", markerstrokewidth=0
 )
@@ -128,11 +128,11 @@ min_idx = argmin(VarSurface)
 max_idx = argmax(VarSurface)
 
 scatter!(plt,
-    [x3_grid[min_idx[2]]], [μ_grid[min_idx[1]]];
+    [x1_grid[min_idx[2]]], [σ_grid[min_idx[1]]];
     marker = :circle, color = :red, ms = 5, label = "True min"
 )
 scatter!(plt,
-    [x3_grid[max_idx[2]]], [μ_grid[max_idx[1]]];
+    [x1_grid[max_idx[2]]], [σ_grid[max_idx[1]]];
     marker = :rect, color = :red, ms = 5, label = "True max"
 )
 

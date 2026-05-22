@@ -8,14 +8,13 @@ Random.seed!(42)
 # Inputs + Model
 # ============================================================
 
-x1 = RandomVariable(Normal(0, 1), :x1)
-x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.3, 1.8), :σ => 2.0)), :x2)
-x3 = IntervalVariable(-0.5, 1.3, :x3)
+x1 = IntervalVariable(-1.0, 1.0, :x1)
+x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => 0, :σ => Interval(0.5, 1.5))), :x2)
 
-X = [x1, x2, x3]
+X = [x1, x2]
 
 model = Model(
-    rv -> rv.x1 .* ((rv.x2 .* rv.x2) .+ rv.x2 + cos.(π .* rv.x3) .- 7),
+    rv -> rv.x1 .* rv.x2 .+ rv.x1 .+ rv.x2 .+ 1,
     :y
 )
 
