@@ -13,16 +13,7 @@ Random.seed!(42)
 # ============================================================
 analytical_model(x1, x2) = x1 .+ x2 .+x1 .* x2 .+ 1
 analytical_variance(x1, σ) = σ^2*(x1^2 + 2*x1 + 1) + x1^2 + 2*x1 - (x1 + 1)^2 + 1
-# ============================================================
-# Augmented space definition
-#
-#   u2  ~ U(0,1)                auxiliary        → inverse CDF surrogate
-#   x1  ∈ [-1.0, 1.0]           interval         → sample uniformly over bounds
-#   θ_σ ∈ [-1.0,  1.0]          p-box parameter  → sample uniformly over bounds
-#
-#   Physical x2 is recovered as: x2 = F⁻¹(u2; μ, θ_σ)
-#   This is the Rosenblatt transform — makes x2 a deterministic function of (u2, θ_σ)
-# ============================================================
+
 const μ_FIXED = 0.0
 
 const x1_UPPER = 1.0
@@ -31,12 +22,6 @@ const x1_LOWER = -1.0
 const θ_σ_UPPER = 1.5
 const θ_σ_LOWER = 0.5
 
-"""
-    inverse_cdf_x2(u2, θ_σ)
-
-Recover the physical x2 from the auxiliary uniform u2 and the p-box parameter θ_σ
-via the inverse Normal CDF.
-"""
 inverse_cdf_x2(u2, θ_σ; μ=μ_FIXED) = quantile.(Normal.(μ, θ_σ), u2)
 
 

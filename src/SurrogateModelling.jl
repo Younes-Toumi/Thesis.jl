@@ -114,8 +114,12 @@ include("metrics/metrics.jl")
 
 export 
     mse, rmse, nrmse, q2
-end
 
 # 4. Adaptive Sampling
 include("propagation/bayesianoptimization.jl") 
 include("propagation/bayesiancubature.jl")
+
+export 
+    estimate_V, variance_moments_mcs, bo_incumbent_objective, bo_ei_objective
+
+end

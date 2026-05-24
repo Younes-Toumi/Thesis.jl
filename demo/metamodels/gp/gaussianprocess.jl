@@ -75,7 +75,7 @@ for (metamodel, message) in zip(metamodels, messages)
     println("============================================================\n")
 
     @time "fit!" fit!(metamodel)
-    μ_scaled, σ_scaled = @time "predict" predict(metamodel, X_test_scaled)
+    μ_scaled, σ_scaled = @time "predict" predict(metamodel, Matrix(X_test_scaled))
 
     μ = SurrogateModelling.inverse_mean(pipeline, μ_scaled)
     σ = sqrt.(SurrogateModelling.inverse_variance(pipeline, σ_scaled.^2))

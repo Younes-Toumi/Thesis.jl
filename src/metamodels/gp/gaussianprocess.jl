@@ -283,13 +283,11 @@ fit!(gp)
 # See also
 [`evaluate!`](@ref) for in-place prediction directly into a `DataFrame`
 """
-function predict(gp::GaussianProcess, Xnew::DataFrame)
+function predict(gp::GaussianProcess, Xnew::Matrix{Float64})
     gp.posterior === nothing && error("GP has not been trained yet. Call fit!(gp) first.")
  
-    Xmat = Matrix(Xnew[:, gp.x_names])
-    Xvec = [Xmat[i, :] for i in 1:size(Xmat, 1)]
- 
-    μ, v  = mean_and_var(gp.posterior, Xvec)
+    # Xmat = Matrix(Xnew[:, gp.x_names])
+    μ, v = mean_and_var(gp.posterior, RowVecs(Xnew))
     σ     = sqrt.(v)
 
     return μ, σ

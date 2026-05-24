@@ -79,7 +79,7 @@ data_aug_test = DataFrame(
     :y   => y_test_v,
 )
 
-μ_test, σ_test = predict(metamodel, data_aug_test[:, X_names])
+μ_test, σ_test = @time "predict:" predict(metamodel, Matrix(data_aug_test[:, X_names]))
 
 println("MSE: $(round(mse(data_aug_test.y, μ_test), digits=5))")
 println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
