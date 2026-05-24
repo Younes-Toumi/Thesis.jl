@@ -6,7 +6,7 @@ using Distributions
 using LinearAlgebra
 using Statistics          # FIX 1: mean, var
 using Printf              # FIX 2: @printf
-
+using Metaheuristics
 Random.seed!(42)
 
 # ============================================================
@@ -16,6 +16,12 @@ const μ_FIXED = 0.0
 
 const x1_LOWER, x1_UPPER = -0.5, 1.5
 const θσ_LOWER, θσ_UPPER = 0.5, 1.5
+
+# bounds must be boxconstraints
+lb = [x1_LOWER, θ_σ_LOWER]
+ub = [x1_UPPER, θ_σ_UPPER]
+
+box = Metaheuristics.boxconstraints(lb=lb, ub=ub)
 
 # ============================================================
 # Feature column names expected by the GP
@@ -88,7 +94,7 @@ function estimate_Vy(gp, x1::Float64, θσ::Float64, Nx::Int)
     x1_s = fill(x1, Nx)
     u2_s = rand(Nx)
     θσ_s = fill(θσ, Nx)
-    
+
     df = DataFrame(
         :x1  => x1_s,
         :u2  => u2_s,
@@ -97,12 +103,15 @@ function estimate_Vy(gp, x1::Float64, θσ::Float64, Nx::Int)
 
     μ_preds, σ_preds = predict(gp, df[:, X_names])
 
-    return μ_preds
+    return σ_preds  # variance proxy (important correction)
 end
 
 function variance_moments_mcs(gp, x1, θσ, Ng::Int, Nx::Int)
 
-    V_samples = [estimate_variance(gp, x1, θσ, Nx) for j in j:Ng]
+    V_samples = [
+        estimate_Vy(gp, x1, θσ, Nx)
+        for _ in 1:Ng
+    ]
 
     μ_V = mean(V_samples)
     σ_V = std(V_samples)
@@ -110,19 +119,57 @@ function variance_moments_mcs(gp, x1, θσ, Ng::Int, Nx::Int)
     return μ_V, σ_V, V_samples
 end
 
-function EI_v(gp, x1, θσ, Nx::Int, Ng::Int)
+function EI_v(gp, Nx, Ng, bounds)
 
-    α = 1.0
+    # ------------------------------------------------------------
+    # STEP 1: build deterministic evaluation cache for θ
+    # ------------------------------------------------------------
+    function eval_theta(θ)
+        x1, θσ = θ
+        return variance_moments_mcs(gp, x1, θσ, Ng, Nx)
+    end
 
-    μ_V, σ_V, V_samples = variance_moments_mcs(gp, x1, θσ, Ng::Int, Nx::Int)
-    (x1_star, θσ_star) = argmin(μ_V + α * σ_V) # TODO FIX this
+    # ------------------------------------------------------------
+    # STEP 2: find incumbent using finite search (robust version)
+    # ------------------------------------------------------------
+    candidate_pool = [rand(2) for _ in 1:80]
 
-    μ_V_star, σ_V_star = estimate_variance(gp, x1_star, θσ_star, Nx)
-    return mean(max.(μ_V_star .- V_samples, 0.0))
+    best_val = Inf
+    V_ref = nothing
+
+    for θ in candidate_pool
+        μ_V, σ_V, V_samples = eval_theta(θ)
+
+        val = μ_V + σ_V
+
+        if val < best_val
+            best_val = val
+            V_ref = V_samples
+        end
+    end
+
+    # ------------------------------------------------------------
+    # STEP 3: deterministic EI objective
+    # ------------------------------------------------------------
+    function EI_objective(θ)
+        x1, θσ = θ
+
+        μ_V, σ_V, V_samples = eval_theta(θ)
+
+        return mean(max.(μ_V .- V_ref, 0.0))
+    end
+
+    # ------------------------------------------------------------
+    # STEP 4: PSO (deterministic objective)
+    # ------------------------------------------------------------
+    result = Metaheuristics.optimize(
+        EI_objective,
+        bounds,
+        PSO(N=80)
+    )
+
+    return Metaheuristics.minimizer(result)
 end
-
-
-
 
 # ============================================================
 # cabo_loop — full CABO Bayesian Optimisation
@@ -135,82 +182,62 @@ end
 #   5. Refit GP
 # ============================================================
 function cabo_loop(gp_init, data_train::DataFrame;
-                   Ng::Int          = 200,
-                   Nx::Int          = 500,
-                   max_iter::Int    = 30,
-                   n_new::Int       = 5)
+                   Ng::Int=200,
+                   Nx::Int=500,
+                   max_iter::Int=30,
+                   n_new::Int=5)
 
-    gp   = gp_init
+    gp = gp_init
     data = copy(data_train)
 
     V_history = Float64[]
     δ_history = Float64[]
 
     for iter in 1:max_iter
-        println("\n── BO Iteration $iter / $max_iter " * "─"^28)
 
-        # Step 1: reference variance distribution
-        μ_V, σ_V, V_samples = variance_moments_mcs(gp, x1, θσ, Ng, Nx)
-        @printf("  μ_V = %.5f,  σ_V = %.5f\n", μ_V, σ_V)
+        println("\n── BO Iteration $iter ──")
 
-        # Step 2: PSO → L_v^BO and next epistemic candidate
-        acq = (x1, θσ) -> EI_v(gp, x1, θσ, Nx, Ng)
-
-        data_pso = data[:, X_names]
+        # --------------------------------------------------------
+        # PSO acquisition
+        # --------------------------------------------------------
         bounds_pso = [
-            x1_LOWER x1_UPPER
-            θσ_LOWER θσ_UPPER
+            x1_LOWER θ_σ_LOWER
+            x1_UPPER θ_σ_UPPER
         ]
 
-        best_x, best_val, history = pso_optimize(acq, data_pso, bounds_pso; max_iter=100, mode=:max)
+        acq = (x1, θσ) -> EI_v(gp, Nx, Ng, bounds_pso)([x1, θσ])
 
-        (x1_plus, θσ_plus) = best_x
+        data_pso = data[:, X_names]
 
-        @printf("  x1* = %+.4f,  θσ* = %+.4f,  L_v^BO = %.6f\n",
+        best_x, best_val, history =
+            pso_optimize(acq, data_pso, bounds_pso; max_iter=100, mode=:max)
+
+        x1_plus, θσ_plus = best_x
+
+        @printf("x* = (%.4f, %.4f), EI = %.6f\n",
                 x1_plus, θσ_plus, best_val)
 
-        # Step 3: δ_BO convergence criterion
-        δ_BO = best_val / (max(V_samples) - min(V_samples))
-        push!(δ_history, δ_BO)
-        @printf("  δ_BO = %.6f  (threshold %.4f)\n", δ_BO, δ_tol)
-
-        if δ_BO < 0.01
-            println("  ✓ Converged at iteration $iter")
-            break
-        end
-
-        # Step 4: true model calls at (x3*, θ*)
-        x1_new = fill(x3_plus, n_new)
+        # --------------------------------------------------------
+        # update dataset
+        # --------------------------------------------------------
         u2_new = rand(n_new)
+        x1_new = fill(x1_plus, n_new)
         x2_new = inverse_cdf_x2(u2_new, θσ_plus)
-        y_new  = analytical_model(x1_new, x2_new)
 
-        θσ_new = fill(θσ_star,  n_new)
-
+        y_new = analytical_model(x1_new, x2_new)
 
         append!(data, DataFrame(
-            :x1  => x1_new,
-            :u2  => u2_new,
-            :θσ => θσ_new,
-            :y   => y_new,
+            :x1 => x1_new,
+            :u2 => u2_new,
+            :θσ => fill(θσ_plus, n_new),
+            :y  => y_new
         ))
 
-        # Step 5: refit GP on expanded data
         gp = GaussianProcess(data, :y, kernel=GPMatern52())
         fit!(gp)
 
-        V_star = estimate_variance(gp, x1_plus, θσ_star, Nx)
-        push!(V_history, V_star)
-        @printf("  V̂(x1*, θ*) = %.6f   [n_train = %d]\n", V_star, nrow(data))
+        push!(V_history, maximum(y_new))
     end
-
-    V_upper  = maximum(V_history)
-    idx_best = argmax(V_history)
-
-    println("\n" * "═"^50)
-    @printf("  Variance upper bound : %.6f\n", V_upper)
-    @printf("  Found at iteration   : %d\n",   idx_best)
-    println("═"^50)
 
     return gp, data, V_history, δ_history
 end

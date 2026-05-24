@@ -114,11 +114,8 @@ include("metrics/metrics.jl")
 
 export 
     mse, rmse, nrmse, q2
-
+end
 
 # 4. Adaptive Sampling
-include("adaptive/particleswarmoptimization.jl")
-
-export
-    pso_optimize
-end
+include("propagation/bayesianoptimization.jl") 
+include("propagation/bayesiancubature.jl")
