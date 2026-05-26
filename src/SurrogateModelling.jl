@@ -116,10 +116,12 @@ export
     mse, rmse, nrmse, q2
 
 # 4. Adaptive Sampling
+
+include("propagation/karhunenloeven.jl")
 include("propagation/bayesianoptimization.jl") 
 include("propagation/bayesiancubature.jl")
 
 export 
-    estimate_V, variance_moments_mcs, bo_incumbent_objective, bo_ei_objective
-
+    estimate_V, variance_moments_mcs, bo_incumbent_objective, bo_ei_objective,
+    gp_posterior_mean_cov, sample_gp_kl, kernelmatrix
 end

@@ -66,7 +66,7 @@ end
 # ============================================================
 # Initial training design D₀
 # ============================================================
-n_train = 20
+n_train = 10
 
 x1_train, u2_train, θ_σ_train = mc_augmented(n_train)
 x2_train = inverse_cdf_x2(u2_train, θ_σ_train)
@@ -115,10 +115,12 @@ function cabo_loop(
     gp = gp_init
     for iter in 1:max_iter
 
-        print("Iteration n° $iter\n")
+        print("\n\nIteration n° $iter\n")
         # part 1 incumbent:
         u = rand(Ng, Nx) # TODO needs to be only Nx fix later
-        result_star = @time "result_star" Metaheuristics.optimize(
+        # u = rand(Nx) # TODO needs to be only Nx fix later
+
+        result_star = Metaheuristics.optimize(
             x -> bo_incumbent_objective(gp, x, u, Ng, Nx),
             bounds,
             PSO(N=50)
@@ -126,13 +128,15 @@ function cabo_loop(
 
         θ_star = minimizer(result_star)
         x1_star, θσ_star = θ_star
-        μ_V_star, σ_V_star = variance_moments_mcs(gp, x1_star, u, θσ_star, Ng, Nx)
+        # print("\n AT STAR: \n")
+        V_star_samples, μ_V_star, σ_V_star = variance_moments_mcs(gp, x1_star, u, θσ_star, Ng, Nx)
 
-        print("θ_star: $θ_star\n")
+
+        # print("θ_star: $θ_star\n")
 
         # part 2 acquisition:
-        result_plus = @time "result_plus " Metaheuristics.optimize(
-            x -> bo_ei_objective(gp, x, u, μ_V_star, Ng, Nx),
+        result_plus = Metaheuristics.optimize(
+            x -> - bo_ei_objective(gp, x, u, μ_V_star, Ng, Nx),
             bounds,
             PSO(N=50)
         )
@@ -140,7 +144,21 @@ function cabo_loop(
         θ_plus = minimizer(result_plus)
         x1_plus, θσ_plus = θ_plus
 
+        # convergence check
+        V_samples, _, _ = variance_moments_mcs(gp, x1_plus, u, θσ_plus, Ng, Nx)
+
+        print("V_samples: $(V_samples[1:5])\n")
+        print("μ_V_star: $μ_V_star\n")
+
+        Δ_BO = 1e-3
+
+        # print("\nL_bo_plus: $L_bo_plus\n")
+        print("θ_star: $θ_star\n")
         print("θ_plus: $θ_plus\n")
+
+        L_BO_best = Metaheuristics.minimum(result_plus)
+        print("L_BO_best: $L_BO_best\n")
+
 
         # part 3 expensive model
         u2_new = rand(n_new)
@@ -166,17 +184,19 @@ function cabo_loop(
         println("MSE: $(round(mse(data_aug_test.y, μ_pred), digits=5))")
         println("Q²:  $(round(q2(data_aug_test.y, μ_pred), digits=5)) \n")
 
-        #     # convergence
-    #     # if δ_BO < tol
-    #     #    break
+
+        if L_BO_best < 1e-3
+            break
+        end
+
     end
 end
 
 @time "cabo_loop: \n" cabo_loop(
     metamodel,
     data_aug_train;
-    Ng          = 50,    # epistemic MC samples per BO step
-    Nx          = 50,    # aleatory MC samples inside estimate_variance
-    max_iter    = 2,     # hard cap
-    n_new       = 1,      # true-model calls added per iteration
+    Ng          = 200,    # epistemic MC samples per BO step
+    Nx          = 100,    # aleatory MC samples inside estimate_variance
+    max_iter    = 20,     # hard cap
+    n_new       = 3,      # true-model calls added per iteration
 )

@@ -61,7 +61,7 @@ data_aug_train = DataFrame(
     :y   => y_train,
 )
 
-metamodel = GaussianProcess(data_aug_train, :y, kernel=GPSquaredExponential())
+metamodel = GaussianProcess(data_aug_train, :y, kernel_type=GPSquaredExponential())
 @time "fit!" fit!(metamodel)
 
 # ============================================================
@@ -83,3 +83,88 @@ data_aug_test = DataFrame(
 
 println("MSE: $(round(mse(data_aug_test.y, μ_test), digits=5))")
 println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
+
+# ---------------------------------------------------------------------- #
+# 1. building discrete support points
+Nx = 10
+x1 = fill(-0.5, Nx)
+θσ = fill(0.5, Nx)
+u2 = rand(Nx)
+
+W = hcat(x1, u2, θσ)
+
+# 2. EOLE covariance matrix
+m = size(W,1)
+K = zeros(m,m)
+
+for i in 1:m
+    for j in 1:m
+        K[i,j] = metamodel.kernel_prior(W[i,:], W[j,:])
+    end
+end
+
+eig = eigen(Symmetric(K))
+λ = eig.values
+λ = max.(λ, 0.0) # last mode is negative but close to 0, numerical stuff
+V = eig.vectors
+
+# reordering
+idx = sortperm(λ, rev=true)
+λ = λ[idx]
+V = V[:, idx]
+
+# r effective
+energy = cumsum(λ) ./ sum(λ)
+r = findfirst(x -> x ≥ 0.99, energy)
+
+# truncation
+λ_r = λ[1:r]
+V_r = V[:, 1:r]
+
+# kernel vectors
+function k_vec(kernel, W, w)
+    m = size(W,1)
+    k = zeros(m)
+    for j in 1:m
+        k[j] = kernel(w, W[j,:])
+    end
+    return k
+end
+
+
+
+function posterior_sample(kernel, W, V, λ, μy, K, r)
+    ξ  = randn(r)
+    λr = λ[1:r]
+    Vr = V[:, 1:r]
+    cholK = cholesky(Symmetric(K + 1e-8I))
+
+    # unconditional sample
+    h = w -> begin
+        kvec = k_vec(kernel, W, w)
+        # keep your chosen EOLE/KL formula here
+        dot(kvec, Vr * (ξ ./ sqrt.(λr)))
+    end
+
+    # values of the SAME sample at support points
+    hW = [h(W[i, :]) for i in eachindex(eachrow(W))]
+
+    return w -> begin
+        kvec = k_vec(kernel, W, w)
+        α = cholK \ hW
+        μ_hat_w = dot(kvec, α)
+        μy(w) - μ_hat_w + h(w)
+    end
+end
+
+μy = w -> predict(metamodel, reshape(w, 1, :))[1][1]
+
+f = posterior_sample(
+    metamodel.kernel_prior,
+    W,
+    V,
+    λ,
+    μy,
+    K,
+    r
+)

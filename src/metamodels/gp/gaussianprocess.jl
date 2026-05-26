@@ -28,8 +28,8 @@ mutable struct GaussianProcess <: UQModel
     X::Matrix{Float64}
     y::Vector{Float64}
 
-    mean:: AbstractGPMean
-    kernel:: AbstractGPKernel
+    mean_type:: AbstractGPMean
+    kernel_type:: AbstractGPKernel
     θ::NamedTuple
 
     posterior::Union{AbstractGPs.PosteriorGP, Nothing}
@@ -38,6 +38,10 @@ mutable struct GaussianProcess <: UQModel
     x_names::Vector{Symbol}
 
     unflatten
+    mean_prior
+    kernel_prior
+    mean_posterior
+    kernel_posterior
     learn_noise::Bool
 end
 
@@ -82,8 +86,8 @@ gp = GaussianProcess(train_df, :y; kernel=GPSquaredExponential(), learn_noise=tr
 function GaussianProcess(
     data::DataFrame,
     y_symbol::Symbol;
-    mean::AbstractGPMean          = GPZeroMean(),
-    kernel::AbstractGPKernel      = GPSquaredExponential(),
+    mean_type::AbstractGPMean          = GPZeroMean(),
+    kernel_type::AbstractGPKernel      = GPSquaredExponential(),
     θ::Union{NamedTuple, Nothing} = nothing,
     learn_noise::Bool             = false
 )
@@ -94,21 +98,28 @@ function GaussianProcess(
     y = Vector(data[:, y_symbol])
 
     # Infer sensible starting values from data if not provided (avoids flat/degenerate regions)
-    θ0 = isnothing(θ) ? default_θ(kernel, X, y) : θ
+    θ0 = isnothing(θ) ? default_θ(kernel_type, X, y) : θ
 
     # Optim.jl needs a flat Vector{Float64}; unflatten reconstructs the NamedTuple after optimisation
     flat_θ0, unflatten = value_flatten(θ0)
 
+    mean_prior = build_mean(mean_type, X, y)
+    kernel_prior = build_kernel(kernel_type, unflatten(flat_θ0))
+
     return GaussianProcess(
         X,
         y,
-        mean,
-        kernel,
+        mean_type,
+        kernel_type,
         θ0,
         nothing,
         y_symbol,
         x_names,
         unflatten,
+        mean_prior,
+        kernel_prior,
+        nothing,
+        nothing,
         learn_noise
     )
 end
@@ -153,12 +164,12 @@ function fit!(gp::GaussianProcess)
     y_scale = var(gp.y) # scale noise relative to output, this avoids hardcoding across problems
     flat_θ0, _ = value_flatten(gp.θ) # re-flatten in case fit! is called again after manual θ updates
 
-    mean = build_mean(gp.mean, gp.X, gp.y)
+    mean = build_mean(gp.mean_type, gp.X, gp.y)
     Xt = collect(gp.X')
 
     function nlml(flat_θ)
         θ = gp.unflatten(flat_θ)                # recover NamedTuple so kernel can unpack named fields
-        kernel = build_kernel(gp.kernel, θ)     # kernels are immutable -> rebuild on every call
+        kernel = build_kernel(gp.kernel_type, θ)     # kernels are immutable -> rebuild on every call
         
         f = GP(mean, kernel)
 
@@ -203,7 +214,7 @@ function fit!(gp::GaussianProcess)
     # Run from default θ0 + n_restarts-1 random perturbations
     flat_θ0, _ = value_flatten(gp.θ)
 
-    n_restarts = 10
+    n_restarts = 5
     results = map(1:n_restarts) do i
         # println("RUN NUMBER $i \n\n\n\n")
         θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.5 .* randn(length(flat_θ0))
@@ -239,7 +250,7 @@ function fit!(gp::GaussianProcess)
 
     # Build posterior with optimised hyperparameters
     gp.θ = θ_opt
-    kernel_opt = build_kernel(gp.kernel, θ_opt)
+    kernel_opt = build_kernel(gp.kernel_type, θ_opt)
     f_opt      = GP(kernel_opt)
 
     # Tighten jitter from 0.1*var(y) → 1e-5: interpolate training data closely for posterior
@@ -248,7 +259,11 @@ function fit!(gp::GaussianProcess)
  
     gp.θ         = θ_opt
     gp.posterior = posterior(fx, gp.y)
- 
+    
+    # gp.mean_posterior   = build_mean(gp.mean_type, gp.X, gp.y)
+    gp.mean_posterior = x -> mean(gp.posterior(x))
+    gp.kernel_posterior = build_kernel(gp.kernel_type, θ_opt)
+
     return gp
 end
 
