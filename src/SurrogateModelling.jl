@@ -117,11 +117,17 @@ export
 
 # 4. Adaptive Sampling
 
-include("propagation/karhunenloeven.jl")
-include("propagation/bayesianoptimization.jl") 
-include("propagation/bayesiancubature.jl")
+include("propagation/augmentedspace.jl")
+include("propagation/cabo/bayesianoptimization.jl") 
+include("propagation/cabo/bayesiancubature.jl")
+include("propagation/cabo/cabo.jl")
+
+export 
+    AugmentedModel, sample, to_physical, evaluate, build_dataset
 
 export 
     estimate_V, variance_moments_mcs, bo_incumbent_objective, bo_ei_objective,
-    gp_posterior_mean_cov, sample_gp_kl, kernelmatrix
+    estimate_V_EOLE, k_vec, posterior_sample, eole_stuff,
+    bo_incumbent_objective_response, estimate_propagation, bo_ei_objective_response,
+    AEI_objective, PVC
 end

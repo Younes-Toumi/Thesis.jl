@@ -86,7 +86,7 @@ println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
 
 # ---------------------------------------------------------------------- #
 # 1. building discrete support points
-Nx = 10
+Nx = 50
 x1 = fill(-0.5, Nx)
 θσ = fill(0.5, Nx)
 u2 = rand(Nx)
@@ -132,34 +132,35 @@ function k_vec(kernel, W, w)
 end
 
 
+function posterior_sample_factory(kernel, W, V, λ, μy, K, r)
 
-function posterior_sample(kernel, W, V, λ, μy, K, r)
-    ξ  = randn(r)
-    λr = λ[1:r]
-    Vr = V[:, 1:r]
     cholK = cholesky(Symmetric(K + 1e-8I))
 
-    # unconditional sample
-    h = w -> begin
-        kvec = k_vec(kernel, W, w)
-        # keep your chosen EOLE/KL formula here
-        dot(kvec, Vr * (ξ ./ sqrt.(λr)))
-    end
+    return function ()
+        ξ = randn(r)   # <-- randomness here
 
-    # values of the SAME sample at support points
-    hW = [h(W[i, :]) for i in eachindex(eachrow(W))]
+        λr = λ[1:r]
+        Vr = V[:, 1:r]
 
-    return w -> begin
-        kvec = k_vec(kernel, W, w)
-        α = cholK \ hW
-        μ_hat_w = dot(kvec, α)
-        μy(w) - μ_hat_w + h(w)
+        h = w -> begin
+            kvec = k_vec(kernel, W, w)
+            dot(kvec, Vr * (ξ ./ sqrt.(λr)))
+        end
+
+        hW = [h(W[i, :]) for i in eachindex(eachrow(W))]
+
+        return w -> begin
+            kvec = k_vec(kernel, W, w)
+            α = cholK \ hW
+            μ_hat_w = dot(kvec, α)
+            μy(w) - μ_hat_w + h(w)
+        end
     end
 end
 
 μy = w -> predict(metamodel, reshape(w, 1, :))[1][1]
 
-f = posterior_sample(
+factory = posterior_sample_factory(
     metamodel.kernel_prior,
     W,
     V,
@@ -168,3 +169,13 @@ f = posterior_sample(
     K,
     r
 )
+
+
+f1 = factory()
+f2 = factory()
+f3 = factory()
+
+print("\n")
+print(mean([f1(W[i, :]) for i in 1:Nx]), "\n")
+print(mean([f2(W[i, :]) for i in 1:Nx]), "\n")
+print(mean([f3(W[i, :]) for i in 1:Nx]), "\n")

@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "0518c1eeb8b0e9dad014f2f4d501e351e6ab2f09"
+project_hash = "70d1bafaa427daba86827a72c2776ebbc8d18190"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -1774,7 +1774,7 @@ uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
 version = "7.8.3+2"
 
 [[deps.SurrogateModelling]]
-deps = ["AbstractGPs", "Clustering", "DataFrames", "DifferentiationInterface", "Distributions", "FastGaussQuadrature", "KernelFunctions", "LinearAlgebra", "Mooncake", "Optim", "ParameterHandling", "PlotlyJS", "PlotlyLight", "Plots", "Random", "Statistics", "UncertaintyQuantification", "Zygote"]
+deps = ["AbstractGPs", "Clustering", "DataFrames", "DifferentiationInterface", "Distributions", "FastGaussQuadrature", "KernelFunctions", "LinearAlgebra", "Metaheuristics", "Mooncake", "Optim", "ParameterHandling", "PlotlyJS", "PlotlyLight", "Plots", "Random", "Statistics", "UncertaintyQuantification", "Zygote"]
 path = "."
 uuid = "48446d74-721d-438e-b46c-e6dedc4d0f53"
 version = "0.1.0"

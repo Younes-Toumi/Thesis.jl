@@ -3,102 +3,105 @@ using UncertaintyQuantification
 using Random
 using DataFrames
 using Distributions
+using ParameterHandling
 using LinearAlgebra
-using Statistics
-using Printf
 using Metaheuristics
-Random.seed!(42)
+using QuasiMonteCarlo
 
-# ============================================================
-# Epistemic domain bounds  (FIX 3: define before PSO uses them)
-# ============================================================
-const μ_FIXED = 0.0
+# response function
+function g_function(x1::Float64, x2::Float64)
+    α_g = [2.0 3.0 1.0 4.0; 3.0 2.0 4.0 1.0]
+    β_g = [-0.5 0.5 -0.5 0.5; -0.5 -0.5 0.5 0.5]
+    c_g = [1.0, -1.5, -1.5, 2.0]
 
-const x1_UPPER = 1.5
-const x1_LOWER = -0.5
+    result = 0.0
+    for i in 1:4
+        result += c_g[i] * exp(-α_g[1,i] * (x1 - β_g[1,i])^2 - α_g[2,i] * (x2 - β_g[2,i])^2)
+    end
+    return result
+end
 
-const θ_σ_UPPER = 1.5
-const θ_σ_LOWER = 0.5
+const σ_FIXED = 0.1
 
-const BOUNDS = (
-    x1 = (x1_LOWER, x1_UPPER),
-    θσ = (θ_σ_LOWER, θ_σ_UPPER)
-)
+const θ_μ1_UPPER = 1.5
+const θ_μ1_LOWER = -1.5
+
+const θ_μ2_UPPER = 1.5
+const θ_μ2_LOWER = -1.5
 
 # bounds must be boxconstraints
-lb = [x1_LOWER, θ_σ_LOWER]
-ub = [x1_UPPER, θ_σ_UPPER]
-bounds = Metaheuristics.boxconstraints(lb=lb, ub=ub)
+lb = [θ_μ1_LOWER, θ_μ2_LOWER]
+ub = [θ_μ1_UPPER, θ_μ2_UPPER]
+
+bounds_θ = Metaheuristics.boxconstraints(lb=lb, ub=ub)
+bounds_u = Metaheuristics.boxconstraints(lb = [0.0, 0.0], ub = [1.0, 1.0])
 
 
-# ============================================================
-# Feature column names expected by the GP
-# ============================================================
-const X_names = [:x1, :u2, :θ_σ]
+function build_design(physical_model, n_samples::Int, x_names::Vector{Symbol}; seed::Int=42)
+    Random.seed!(seed)
 
-# ============================================================
-# True model — operates on physical inputs (x1, x2)
-# ============================================================
-analytical_model(x1, x2) = x1 .+ x2 .+x1 .* x2 .+ 1
-analytical_variance(x1, σ) = σ^2*(x1^2 + 2*x1 + 1) + x1^2 + 2*x1 - (x1 + 1)^2 + 1
-# ============================================================
+    lhs = QuasiMonteCarlo.sample(
+        n_samples,
+        [0.0, 0.0],
+        [1.0, 1.0],
+        LatinHypercubeSample()
+    )'
 
-# ============================================================
-# Augmented-space helpers
-# ============================================================
+    # 1. sampling θ
+    θ_μ1 = θ_μ1_LOWER .+ (θ_μ1_UPPER - θ_μ1_LOWER) .* lhs[:, 1]
+    θ_μ2 = θ_μ2_LOWER .+ (θ_μ2_UPPER - θ_μ2_LOWER) .* lhs[:, 2]
 
-inverse_cdf_x2(u2, θ_σ; μ=μ_FIXED) = quantile.(Normal.(μ, θ_σ), u2)
+    # 2. physical sampling
+    x1 = rand.(Normal.(θ_μ1, σ_FIXED))
+    x2 = rand.(Normal.(θ_μ2, σ_FIXED))
 
-function mc_augmented(n::Int)
+    # 2. encoding
+    u1 = [cdf(Normal(θ_μ1[i], σ_FIXED), x1[i]) for i in eachindex(x1)]
+    u2 = [cdf(Normal(θ_μ2[i], σ_FIXED), x2[i]) for i in eachindex(x2)]
 
-    # aleatory variable
-    u2 = rand(n)
+    # Evaluate true model at physical inputs
+    y = physical_model.(x1, x2)
 
-    # epistemic variable
-    θσ = rand(n) .* (θ_σ_UPPER - θ_σ_LOWER) .+ θ_σ_LOWER
+    data_aug_train = DataFrame(
+        x_names[1]  => u1,
+        x_names[2]  => u2,
+        x_names[3]  => θ_μ1,
+        x_names[4]  => θ_μ2,
+        :y          => y,
+    )
+    return data_aug_train
+end
 
-    # physical design variable
-    x1 = rand(n) .* (x1_UPPER - x1_LOWER) .+ x1_LOWER
 
-    return x1, u2, θσ
+function qmc_samples(Nx)
+    X = QuasiMonteCarlo.sample(
+        Nx,
+        zeros(2),
+        ones(2),
+        SobolSample()
+    )'
+
+    u1 = X[:, 1]
+    u2 = X[:, 2]
+
+    return u1, u2
 end
 
 # ============================================================
-# Initial training design D₀
+# Build initial design D₀ and evaluate true model
 # ============================================================
-n_train = 10
 
-x1_train, u2_train, θ_σ_train = mc_augmented(n_train)
-x2_train = inverse_cdf_x2(u2_train, θ_σ_train)
-y_train  = analytical_model(x1_train, x2_train)
+x_names = [:u1, :u2, :θ_μ1, :θ_μ2]
 
-data_aug_train = DataFrame(
-    :x1  => x1_train,
-    :u2  => u2_train,
-    :θ_σ => θ_σ_train,
-    :y   => y_train,
-)
+n_train, n_test = 50, 1001
+data_aug_train = build_design(g_function, n_train, x_names; seed=1)
+data_aug_test  = build_design(g_function, n_test,  x_names; seed=2)
 
 # initialize GP on θ-space
-metamodel = GaussianProcess(data_aug_train, :y, kernel=GPSquaredExponential())
+metamodel = GaussianProcess(data_aug_train, :y, kernel_type=GPMatern52())
 @time "fit!" fit!(metamodel)
 
-# ============================================================
-# Quick accuracy check on a held-out test set
-# ============================================================
-n_test = 1001
-x1_test, u2_test, θ_σ_test = mc_augmented(n_test)
-x2_test  = inverse_cdf_x2(u2_test, θ_σ_test)
-y_test_v = analytical_model(x1_test, x2_test)
-
-data_aug_test = DataFrame(
-    :x1  => x1_test,
-    :u2  => u2_test,
-    :θ_σ => θ_σ_test,
-    :y   => y_test_v,
-)
-
-μ_test, σ_test = predict(metamodel, Matrix(data_aug_test[:, X_names]))
+μ_test, σ_test = @time "predict:" predict(metamodel, Matrix(data_aug_test[:, x_names]))
 
 println("MSE: $(round(mse(data_aug_test.y, μ_test), digits=5))")
 println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
@@ -108,95 +111,94 @@ function cabo_loop(
     data_aug_train;
     max_iter,
     Nx,
-    Ng,
     n_new
 )
     data = copy(data_aug_train)
     gp = gp_init
+    
+    # part 1 incumbent:    
+    u1, u2 = qmc_samples(Nx)
+
     for iter in 1:max_iter
 
         print("\n\nIteration n° $iter\n")
-        # part 1 incumbent:
-        u = rand(Ng, Nx) # TODO needs to be only Nx fix later
-        # u = rand(Nx) # TODO needs to be only Nx fix later
-
-        result_star = Metaheuristics.optimize(
-            x -> bo_incumbent_objective(gp, x, u, Ng, Nx),
-            bounds,
-            PSO(N=50)
+        
+        # Part 1: BO
+        θ_result_star = Metaheuristics.optimize(
+            θ -> bo_incumbent_objective_response(gp, θ, [u1, u2], Nx),
+            bounds_θ,
+            PSO(N = 30)
         )
 
-        θ_star = minimizer(result_star)
-        x1_star, θσ_star = θ_star
-        # print("\n AT STAR: \n")
-        V_star_samples, μ_V_star, σ_V_star = variance_moments_mcs(gp, x1_star, u, θσ_star, Ng, Nx)
-
-
-        # print("θ_star: $θ_star\n")
-
-        # part 2 acquisition:
-        result_plus = Metaheuristics.optimize(
-            x -> - bo_ei_objective(gp, x, u, μ_V_star, Ng, Nx),
-            bounds,
-            PSO(N=50)
-        )
-
-        θ_plus = minimizer(result_plus)
-        x1_plus, θσ_plus = θ_plus
-
-        # convergence check
-        V_samples, _, _ = variance_moments_mcs(gp, x1_plus, u, θσ_plus, Ng, Nx)
-
-        print("V_samples: $(V_samples[1:5])\n")
-        print("μ_V_star: $μ_V_star\n")
-
-        Δ_BO = 1e-3
-
-        # print("\nL_bo_plus: $L_bo_plus\n")
+        θ_star = minimizer(θ_result_star)
+        Θμ1_star, Θμ2_star = θ_star
         print("θ_star: $θ_star\n")
+
+        μ_M_star, σ_M2_star = estimate_propagation(gp, u1, u2, Θμ1_star, Θμ2_star, Nx)
+        
+        θ_result_plus = Metaheuristics.optimize(
+            θ -> - AEI_objective(gp, θ, [u1, u2], Nx, μ_M_star),
+            bounds_θ,
+            PSO(N = 30)
+        )
+
+        θ_plus = minimizer(θ_result_plus)
+        L_BO = -AEI_objective(gp, θ_plus, [u1, u2], Nx, μ_M_star)
+        θμ1_plus, θμ2_plus = θ_plus
         print("θ_plus: $θ_plus\n")
 
-        L_BO_best = Metaheuristics.minimum(result_plus)
-        print("L_BO_best: $L_BO_best\n")
-
-
-        # part 3 expensive model
-        u2_new = rand(n_new)
-        x2_new = inverse_cdf_x2(u2_new, θσ_plus)
-
-        y_new = analytical_model(x1_plus, x2_new)
-
-        new_data = DataFrame(
-            :x1  => fill(x1_plus, n_new),
-            :u2  => u2_new,
-            :θ_σ => fill(θσ_plus, n_new),
-            :y   => y_new
+        # Part 2: BC
+        u_result_plus = Metaheuristics.optimize(
+            u -> - PVC(gp, u, θ_plus),
+            bounds_u,
+            PSO(N = 30)
         )
 
-        append!(data, new_data)
+        u_plus = minimizer(u_result_plus)
+        L_BC = PVC(gp, u_plus, θ_plus)
+        u1_plus, u2_plus = u_plus
+        print("u_plus: $u_plus\n")
+
+        # adding new sample point:
+
+        # Evaluate true model at physical inputs
+        x1_plus = quantile.(Normal.(θμ1_plus, σ_FIXED), u1_plus)
+        x2_plus = quantile.(Normal.(θμ2_plus, σ_FIXED), u2_plus)
+        y_plus = g_function.(x1_plus, x2_plus)
+
+        data_aug_plus = DataFrame(
+            x_names[1]  => u1_plus,
+            x_names[2]  => u2_plus,
+            x_names[3]  => θμ1_plus,
+            x_names[4]  => θμ2_plus,
+            :y          => y_plus,
+        )
+        
+        append!(data, data_aug_plus)
 
         # update GP
-        gp = GaussianProcess(data, :y, kernel=GPSquaredExponential())
+        gp = GaussianProcess(data, :y, kernel_type=GPMatern52())
         fit!(gp)
 
-        μ_pred, σ_pred = predict(gp, Matrix(data_aug_test[:, X_names]))
+        μ_pred, σ_pred = predict(gp, Matrix(data_aug_test[:, x_names]))
 
         println("MSE: $(round(mse(data_aug_test.y, μ_pred), digits=5))")
         println("Q²:  $(round(q2(data_aug_test.y, μ_pred), digits=5)) \n")
 
-
-        if L_BO_best < 1e-3
-            break
-        end
+        println("L_BO: $L_BO")
+        println("L_BC: $L_BC")
 
     end
+
+    return gp
 end
 
-@time "cabo_loop: \n" cabo_loop(
+@time "\ncabo_loop: \n" cabo_loop(
     metamodel,
     data_aug_train;
-    Ng          = 200,    # epistemic MC samples per BO step
-    Nx          = 100,    # aleatory MC samples inside estimate_variance
-    max_iter    = 20,     # hard cap
-    n_new       = 3,      # true-model calls added per iteration
+    Nx          = 500,    # aleatory MC samples inside estimate_variance
+    max_iter    = 5,     # hard cap
+    n_new       = 1,      # true-model calls added per iteration
 )
+
+print("\n# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #\n")

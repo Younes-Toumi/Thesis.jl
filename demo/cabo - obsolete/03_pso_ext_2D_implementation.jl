@@ -5,8 +5,7 @@ using DataFrames
 using Distributions
 using ParameterHandling
 using LinearAlgebra
-
-Random.seed!(42)
+using Metaheuristics
 
 # ============================================================
 # True model — operates on physical inputs (x1, x2)
@@ -14,14 +13,39 @@ Random.seed!(42)
 analytical_model(x1, x2) = x1 .+ x2 .+x1 .* x2 .+ 1
 analytical_variance(x1, σ) = σ^2*(x1^2 + 2*x1 + 1) + x1^2 + 2*x1 - (x1 + 1)^2 + 1
 
+f(v) = analytical_variance(v[1], v[2])
+
+
+
+# ============================================================
+# Augmented space definition
+#
+#   u2  ~ U(0,1)                auxiliary        → inverse CDF surrogate
+#   x1  ∈ [-1.0, 1.0]           interval         → sample uniformly over bounds
+#   θ_σ ∈ [-1.0,  1.0]          p-box parameter  → sample uniformly over bounds
+#
+#   Physical x2 is recovered as: x2 = F⁻¹(u2; μ, θ_σ)
+#   This is the Rosenblatt transform — makes x2 a deterministic function of (u2, θ_σ)
+# ============================================================
 const μ_FIXED = 0.0
 
-const x1_UPPER = 1.0
-const x1_LOWER = -1.0
+const x1_UPPER = 1.5
+const x1_LOWER = -0.5
 
 const θ_σ_UPPER = 1.5
 const θ_σ_LOWER = 0.5
 
+bounds = [
+    x1_LOWER   θ_σ_LOWER
+    x1_UPPER   θ_σ_UPPER
+]
+
+"""
+    inverse_cdf_x2(u2, θ_σ)
+
+Recover the physical x2 from the auxiliary uniform u2 and the p-box parameter θ_σ
+via the inverse Normal CDF.
+"""
 inverse_cdf_x2(u2, θ_σ; μ=μ_FIXED) = quantile.(Normal.(μ, θ_σ), u2)
 
 
@@ -61,6 +85,31 @@ data_aug_train = DataFrame(
     :y   => y_train
 )
 
+
+# ============================================================
+# PSO using Metaheuristics.jl
+# ============================================================
+
+# objective must accept Vector{Float64}
+function obj(v)
+    return -f(v) # - to minimize + to maximize
+end
+
+# bounds must be boxconstraints
+lb = [x1_LOWER, θ_σ_LOWER]
+ub = [x1_UPPER, θ_σ_UPPER]
+box = Metaheuristics.boxconstraints(lb=lb, ub=ub)
+
+result = Metaheuristics.optimize(
+    obj,
+    box,
+    PSO(N=80),
+)
+
+history = result.convergence
+
+best_x   = Metaheuristics.minimizer(result)
+best_val = Metaheuristics.minimum(result) # for minimization do -
 using Plots, Distributions, Statistics
 
 
@@ -73,7 +122,6 @@ n_σ = 500
 x1_grid = range(x1_LOWER, x1_UPPER, length=n_x1)
 σ_grid  = range(θ_σ_LOWER, θ_σ_UPPER, length=n_σ)
 
-MeanSurface = zeros(n_x1, n_σ)
 VarSurface  = zeros(n_x1, n_σ)
 
 # ============================================================
@@ -121,6 +169,18 @@ scatter!(plt,
     marker = :rect, color = :red, ms = 5, label = "True max"
 )
 
-println("V range: [$(round(minimum(VarSurface), digits=2)),  $(round(maximum(VarSurface), digits=2))]")
+scatter!(plt,
+    [best_x[1]],
+    [best_x[2]];
+    marker=:star5,
+    ms=10,
+    color=:yellow,
+    label="PSO optimum"
+)
+
+
+println("V range: [$(round(minimum(VarSurface), digits=5)),  $(round(maximum(VarSurface), digits=5))]")
+println("best val: $(round(best_val, digits=5))")
+
 
 display(plt)
