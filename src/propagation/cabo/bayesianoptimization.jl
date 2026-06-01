@@ -1,236 +1,146 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# bayesianoptimization.jl  –  BO engine for CABO
+# ──────────────────────────────────────────────────────────────────────────────
+
 φ(z) = pdf(Normal(), z)
 Φ(z) = cdf(Normal(), z)
 
-function estimate_propagation(gp, u1, u2, Θμ1, Θμ2, Nx)
 
-    X = hcat(
-        u1,
-        u2,
-        fill(Θμ1, Nx), 
-        fill(Θμ2, Nx)
-    )
+using FastGaussQuadrature   # add to Project.toml: FastGaussQuadrature
 
+"""
+    make_gh_nodes(m::Int) → (u_nodes, weights)
+
+Build tensorised 2-D Gauss-Hermite quadrature in u-space.
+m nodes per dimension → m² total points.
+The nodes are converted from z-space (GH is defined for N(0,1))
+to u-space (Φ(z)) to match the GP input encoding.
+"""
+function make_gh_nodes(m::Int = 7)
+    t1d, w1d = gausshermite(m)          # physicist convention: Σwᵢf(tᵢ) ≈ ∫f(t)exp(−t²)dt
+
+    z1d = t1d .* sqrt(2)                # N(0,1) nodes  (scale by √2)
+    w1d = w1d ./ sqrt(π)               # N(0,1) weights (divide by √π,  NO exp term)
+    # sanity: sum(w1d) should equal 1.0 exactly
+
+    u_nodes = Matrix{Float64}(undef, m^2, 2)
+    weights  = Vector{Float64}(undef, m^2)
+    idx = 1
+    for i in 1:m, j in 1:m
+        u_nodes[idx, 1] = cdf(Normal(), z1d[i])
+        u_nodes[idx, 2] = cdf(Normal(), z1d[j])
+        weights[idx]    = w1d[i] * w1d[j]
+        idx += 1
+    end
+    return u_nodes, weights
+end
+
+const GH_NODES, GH_WEIGHTS = make_gh_nodes(7)   # 49 deterministic points
+
+"""
+    estimate_propagation_gh(gp, Θμ1, Θμ2)
+
+Gauss-Hermite version of estimate_propagation.
+No Nx argument needed — nodes are fixed and deterministic.
+"""
+function estimate_propagation_gh(gp, Θμ1, Θμ2)
+    Np  = size(GH_NODES, 1)
+    X   = hcat(GH_NODES[:, 1],
+               GH_NODES[:, 2],
+               fill(Θμ1, Np),
+               fill(Θμ2, Np))
     μ, σ = predict(gp, X)
+    w    = GH_WEIGHTS
 
-    μ_M = mean(μ)
-    σ_M2 = mean(σ .^ 2) + var(μ)
+    μ_M  = dot(w, μ)                               # weighted mean
+    # Weighted law of total variance
+    σ_ep2 = dot(w, σ .^ 2)                         # E_z[σ²_GP]  epistemic
+    σ_al2 = dot(w, (μ .- μ_M) .^ 2)               # Var_z[μ_GP] aleatoric
+    σ_M2  = max(0.0, σ_ep2 + σ_al2)
 
     return μ_M, σ_M2
 end
 
-function bo_incumbent_objective_response(gp, θ, u, Nx)
-    θμ1, θμ2 = θ[1], θ[2]
-    u1, u2 = u[1], u[2]
+"""
+    estimate_propagation(gp, u1, u2, Θμ1, Θμ2, Nx)
 
-    α = 1.0
-    μ_samples, σ_samples = estimate_propagation(gp, u1, u2, θμ1, θμ2, Nx)
+MC estimate of the mean and total variance of E_z[g(z, θ)] at a given θ:
 
-    return μ_samples + α * sqrt(σ_samples)
-end
+  μ_M  =  E_z[ μ_GP(z, θ) ]                                (posterior mean)
+  σ_M² =  E_z[ σ²_GP(z, θ) ] + Var_z[ μ_GP(z, θ) ]       (total uncertainty)
 
+The second term decomposes as:
+  - E_z[σ²_GP]   : epistemic uncertainty (limited training data)
+  - Var_z[μ_GP]  : aleatory variability of g across z
 
-function AEI_objective(gp, θ, u, Nx, μ_M_star)
-
-    θμ1, θμ2 = θ
-    u1, u2 = u
-    μ_M, σ_M2 = estimate_propagation(gp, u1, u2, θμ1, θμ2, Nx)
-
-    σ_M = sqrt(max(σ_M2, 1e-12))
-
-    if σ_M < 1e-12
-        return 0.0
-    end
-
-    z = (μ_M_star - μ_M) / σ_M
-
-    aei = (μ_M_star - μ_M) * Φ(z) + σ_M * φ(z)
-
-    return aei   # PSO minimizes
-end
-
-
-
-using Distributions
-
-function bo_ei_objective_response(gp, θ, θ_star, Ng, Nx)
-    vals = Float64[]
-    for i in 1:Ng
-        u = rand(2)
-        f = estimate_propagation(gp, u[1], u[2], θ[1], θ[2], Nx)[1]
-        f_star = estimate_propagation(gp, u[1], u[2], θ_star[1], θ_star[2], Nx)[1]
-        push!(vals, max(f_star - f, 0.0))
-    end
-    return mean(vals)
-end
-
-
-
-
-
-
-
-######################################################
-
-function estimate_V(gp, x1, u2, θσ, Nx)
-
-    x1 = fill(x1, Nx)
-    θσ  = fill(θσ, Nx)
-
-    X = hcat(x1, u2, θσ)
+Both are estimated from Nx MC / LHS samples u1, u2 ∈ [0,1].
+"""
+function estimate_propagation(gp, u1, u2, Θμ1, Θμ2, Nx)
+    X   = hcat(u1, u2, fill(Θμ1, Nx), fill(Θμ2, Nx))
     μ, σ = predict(gp, X)
-
-    Vy = var(μ)
-
-    return Vy
+    μ_M  = mean(μ)
+    σ_M2 = max(0.0, mean(σ .^ 2) + var(μ))   # guard against FP rounding < 0
+    return μ_M, σ_M2
 end
 
 
-function estimate_V_EOLE(gp, x1, u2, θσ, Nx, Ng)
+"""
+    bo_incumbent_objective_response(gp, θ, u, Nx) → μ_M
 
-    x1_vec = fill(x1, Nx)
-    θσ_vec = fill(θσ, Nx)
+Return the **pure posterior-mean** estimate of E_z[g(z, θ)].
 
-    W = hcat(x1_vec, u2, θσ_vec)
+BUG FIX (was: `μ_M + α·√σ_M2`):
+  The incumbent θ* must reflect the current *best-known* estimate of
+  the objective, not an optimistic UCB/LCB.  Adding α·σ biases the
+  search toward uncertain regions, making μ_M_star inaccurate and
+  corrupting every AEI call that follows.
 
-    # build factory once
-    factory = eole_stuff(gp, W)
+Usage: multiply externally by +1 (minimisation) or −1 (maximisation)
+before passing as the PSO objective.
+"""
+function bo_incumbent_objective_response(gp, θ, u, Nx)
+    u1, u2   = u[1], u[2]
+    # μ_M, σ_M   = estimate_propagation(gp, u1, u2, θ[1], θ[2], Nx)
+    μ_M, σ_M = estimate_propagation_gh(gp, θ[1], θ[2])
+    return μ_M
+end
 
-    # variance for each GP realization
-    V_samples = zeros(Ng)
 
-    for j in 1:Ng
+"""
+    AEI_objective(gp, θ, u, Nx, μ_M_star, sign_dir) → −AEI
 
-        # one GP realization
-        f = factory()
+Augmented Expected Improvement for CABO.
+  sign_dir = +1  →  minimisation   EI = E[ max(η*  − Y(θ), 0) ]
+  sign_dir = −1  →  maximisation   EI = E[ max(Y(θ) − η*,  0) ]
 
-        u2_eval = rand(Nx)
+Returns **−AEI** (≤ 0) so PSO (a minimiser) effectively maximises it.
 
-        X_eval = hcat(
-            fill(x1, Nx),
-            u2_eval,
-            fill(θσ, Nx)
-        )
+BUG FIX – maximisation branch (was: sign·(μ_M_star−μ_M)·Φ(z) with z=(μ_M_star−μ_M)/σ_M):
+  For maximisation the z-score must be (μ_M − μ_M_star)/σ_M (positive
+  when improvement is likely). Using the minimisation z-score with a sign
+  flip gives Φ(negative z) < 0.5 for all promising points, which drives
+  the AEI toward zero exactly where we want it to be large – causing the
+  observed stagnation where every iteration returns the same θ.
 
-        yvals = [f(X_eval[i,:]) for i in 1:Nx]
+Correct closed-form EI for each direction:
+  MIN: (η* − μ_M)·Φ((η* − μ_M)/σ_M) + σ_M·φ((η* − μ_M)/σ_M)
+  MAX: (μ_M − η*)·Φ((μ_M − η*)/σ_M) + σ_M·φ((μ_M − η*)/σ_M)
+"""
+function AEI_objective(gp, θ, u, Nx, μ_M_star, sign_dir)
+    u1, u2    = u[1], u[2]
+    # μ_M, σ_M2 = estimate_propagation(gp, u1, u2, θ[1], θ[2], Nx)
+    μ_M, σ_M2 = estimate_propagation_gh(gp, θ[1], θ[2])
+    σ_M       = sqrt(max(σ_M2, 1e-12))
 
-        # aleatory variance
-        V_samples[j] = var(yvals)
+    σ_M < 1e-12 && return 0.0      # numerically flat region → no gain
+
+    if sign_dir == 1                # ── minimisation ──────────────────────
+        z   = (μ_M_star - μ_M) / σ_M
+        aei = (μ_M_star - μ_M) * Φ(z) + σ_M * φ(z)
+    else                            # ── maximisation ──────────────────────
+        z   = (μ_M - μ_M_star) / σ_M   # ← sign-flipped z  (the critical fix)
+        aei = (μ_M - μ_M_star) * Φ(z) + σ_M * φ(z)
     end
 
-    return V_samples
-end
-
-
-
-
-# kernel vectors
-function k_vec(kernel, W, w)
-    m = size(W,1)
-    k = zeros(m)
-    for j in 1:m
-        k[j] = kernel(w, W[j,:])
-    end
-    return k
-end
-
-
-function posterior_sample_factory(kernel, W, V, λ, μy, K, r)
-
-    cholK = cholesky(Symmetric(K + 1e-8I))
-
-    return function ()
-        ξ = randn(r)   # <-- randomness here
-
-        λr = λ[1:r]
-        Vr = V[:, 1:r]
-
-        h = w -> begin
-            kvec = k_vec(kernel, W, w)
-            dot(kvec, Vr * (ξ ./ sqrt.(λr)))
-        end
-
-        hW = [h(W[i, :]) for i in eachindex(eachrow(W))]
-
-        return w -> begin
-            kvec = k_vec(kernel, W, w)
-            α = cholK \ hW
-            μ_hat_w = dot(kvec, α)
-            μy(w) - μ_hat_w + h(w)
-        end
-    end
-end
-
-function eole_stuff(gp, W)
-    # 2. EOLE covariance matrix
-    m = size(W,1)
-    K = zeros(m,m)
-
-    μy = w -> predict(gp, reshape(w, 1, :))[1][1]
-
-
-    for i in 1:m
-        for j in 1:m
-            K[i,j] = gp.kernel_prior(W[i,:], W[j,:])
-        end
-    end
-
-    eig = eigen(Symmetric(K))
-    λ = eig.values
-    λ = max.(λ, 0.0) # last mode is negative but close to 0, numerical stuff
-    V = eig.vectors
-
-    # reordering
-    idx = sortperm(λ, rev=true)
-    λ = λ[idx]
-    V = V[:, idx]
-
-    # r effective
-    energy = cumsum(λ) ./ sum(λ)
-    r = findfirst(x -> x ≥ 0.99, energy)
-
-
-    μy = w -> predict(gp, reshape(w, 1, :))[1][1]
-
-    factory = posterior_sample_factory(
-        gp.kernel_prior,
-        W,
-        V,
-        λ,
-        μy,
-        K,
-        r
-    )
-    return factory
-end
-
-
-
-
-function variance_moments_mcs(gp, x1, u2, θσ, Ng, Nx)
-
-    # V_samples = [estimate_V(gp, x1, u2[j, :], θσ, Nx) for j in 1:Ng]
-    V_samples = estimate_V_EOLE(gp, x1, u2, θσ, Nx, Ng)
-    
-    return V_samples, mean(V_samples), std(V_samples)
-end
-
-function bo_incumbent_objective(gp, θ, u, Ng, Nx)
-    x1, θσ = θ[1], θ[2]
-    u2 = u
-
-    V_samples, μ_V, σ_V = variance_moments_mcs(gp, x1, u2, θσ, Ng, Nx)
-
-    α = 1.0
-    return μ_V + α * σ_V # or -(μ_V + α σ_V) to maximize
-end
-
-
-function bo_ei_objective(gp, θ, u, μ_V_star, Ng, Nx)
-    x1, θσ = θ[1], θ[2]
-    u2 = u
-    
-    # V_samples = [estimate_V(gp, x1, u2[j, :], θσ, Nx) for j in 1:Ng]
-    # V_samples = estimate_V_EOLE(gp, x1, u2, θσ, Nx, Ng)
-
-    return mean(max.(μ_V_star .- V_samples, 0))
+    return -aei     # PSO minimises → return −AEI (always ≤ 0)
 end

@@ -1774,7 +1774,7 @@ uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
 version = "7.8.3+2"
 
 [[deps.SurrogateModelling]]
-deps = ["AbstractGPs", "Clustering", "DataFrames", "DifferentiationInterface", "Distributions", "FastGaussQuadrature", "KernelFunctions", "LinearAlgebra", "Metaheuristics", "Mooncake", "Optim", "ParameterHandling", "PlotlyJS", "PlotlyLight", "Plots", "Random", "Statistics", "UncertaintyQuantification", "Zygote"]
+deps = ["AbstractGPs", "Clustering", "DataFrames", "DifferentiationInterface", "Distributions", "FastGaussQuadrature", "KernelFunctions", "LinearAlgebra", "Metaheuristics", "Mooncake", "Optim", "ParameterHandling", "PlotlyJS", "PlotlyLight", "Plots", "QuasiMonteCarlo", "Random", "Statistics", "UncertaintyQuantification", "Zygote"]
 path = "."
 uuid = "48446d74-721d-438e-b46c-e6dedc4d0f53"
 version = "0.1.0"

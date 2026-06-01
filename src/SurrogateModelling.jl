@@ -129,5 +129,5 @@ export
     estimate_V, variance_moments_mcs, bo_incumbent_objective, bo_ei_objective,
     estimate_V_EOLE, k_vec, posterior_sample, eole_stuff,
     bo_incumbent_objective_response, estimate_propagation, bo_ei_objective_response,
-    AEI_objective, PVC
+    AEI_objective, PVC, BC_objective_z, PVC_z, make_gh_nodes, estimate_propagation_gh
 end
