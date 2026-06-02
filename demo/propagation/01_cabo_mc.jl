@@ -261,8 +261,7 @@ function cabo_loop(
         make_pso(N=50, iters=200)
     )
     θ_bound  = minimizer(res_bound)
-    # μ_bound, _ = estimate_propagation(gp, u1_f, u2_f, θ_bound[1], θ_bound[2], Nx_final)
-    μ_bound, _ = estimate_propagation_gh(gp, θ_bound[1], θ_bound[2])
+    μ_bound, _ = estimate_propagation(gp, u1_f, u2_f, θ_bound[1], θ_bound[2], Nx_final)
     dir_str = uppercase(string(direction))
     println("\n  ► $(dir_str) bound ≈ $(round(μ_bound, sigdigits=5))" *
             "  at  θ = ($(round(θ_bound[1],digits=4)), $(round(θ_bound[2],digits=4)))")

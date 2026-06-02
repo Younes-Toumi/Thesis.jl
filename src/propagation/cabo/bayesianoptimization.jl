@@ -35,6 +35,30 @@ function make_gh_nodes(m::Int = 7)
     return u_nodes, weights
 end
 
+function make_gl_nodes(m::Int = 7)
+
+    x1d, w1d = gausslegendre(m)   # nodes in [-1, 1]
+
+    # map to [0, 1]
+    u1d = (x1d .+ 1) ./ 2
+    w1d = w1d ./ 2
+
+    u_nodes = Matrix{Float64}(undef, m^2, 2)
+    weights  = Vector{Float64}(undef, m^2)
+
+    idx = 1
+    for i in 1:m, j in 1:m
+        u_nodes[idx, 1] = u1d[i]
+        u_nodes[idx, 2] = u1d[j]
+        weights[idx]    = w1d[i] * w1d[j]
+        idx += 1
+    end
+
+    return u_nodes, weights
+end
+
+# TODO: add propagation for bounds
+const GL_NODES, GL_WEIGHTS = make_gl_nodes(7)
 const GH_NODES, GH_WEIGHTS = make_gh_nodes(7)   # 49 deterministic points
 
 """
@@ -98,9 +122,7 @@ BUG FIX (was: `μ_M + α·√σ_M2`):
 Usage: multiply externally by +1 (minimisation) or −1 (maximisation)
 before passing as the PSO objective.
 """
-function bo_incumbent_objective_response(gp, θ, u, Nx)
-    u1, u2   = u[1], u[2]
-    # μ_M, σ_M   = estimate_propagation(gp, u1, u2, θ[1], θ[2], Nx)
+function bo_incumbent_objective_response(gp, θ)
     μ_M, σ_M = estimate_propagation_gh(gp, θ[1], θ[2])
     return μ_M
 end
@@ -126,9 +148,8 @@ Correct closed-form EI for each direction:
   MIN: (η* − μ_M)·Φ((η* − μ_M)/σ_M) + σ_M·φ((η* − μ_M)/σ_M)
   MAX: (μ_M − η*)·Φ((μ_M − η*)/σ_M) + σ_M·φ((μ_M − η*)/σ_M)
 """
-function AEI_objective(gp, θ, u, Nx, μ_M_star, sign_dir)
-    u1, u2    = u[1], u[2]
-    # μ_M, σ_M2 = estimate_propagation(gp, u1, u2, θ[1], θ[2], Nx)
+function AEI_objective(gp, θ, μ_M_star, sign_dir)
+
     μ_M, σ_M2 = estimate_propagation_gh(gp, θ[1], θ[2])
     σ_M       = sqrt(max(σ_M2, 1e-12))
 
@@ -140,6 +161,24 @@ function AEI_objective(gp, θ, u, Nx, μ_M_star, sign_dir)
     else                            # ── maximisation ──────────────────────
         z   = (μ_M - μ_M_star) / σ_M   # ← sign-flipped z  (the critical fix)
         aei = (μ_M - μ_M_star) * Φ(z) + σ_M * φ(z)
+    end
+
+    return -aei     # PSO minimises → return −AEI (always ≤ 0)
+end
+
+function AEI_objective_direct(gp, x, f_best, sign_dir)
+
+    μ, σ = predict(gp, reshape(x,1,:))
+
+    μ = μ[1]
+    σ = max(σ[1], 1e-12)
+
+    if sign_dir == 1                # ── minimisation ──────────────────────
+        z   = (f_best - μ) / σ
+        aei = (f_best - μ) * Φ(z) + σ * φ(z)
+    else                            # ── maximisation ──────────────────────
+        z   = (μ - f_best) / σ   # ← sign-flipped z  (the critical fix)
+        aei = (μ - f_best) * Φ(z) + σ * φ(z)
     end
 
     return -aei     # PSO minimises → return −AEI (always ≤ 0)

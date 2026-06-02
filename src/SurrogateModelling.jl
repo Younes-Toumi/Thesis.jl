@@ -21,11 +21,12 @@ import Mooncake
 include("metamodels/gp//kernels/kernels.jl")
 include("metamodels/gp/kernels/Matern52.jl")
 include("metamodels/gp/kernels/Matern32.jl")
+include("metamodels/gp/kernels/Matern12.jl")
 include("metamodels/gp/kernels/SquaredExponential.jl")
 include("metamodels/gp/kernels/Composite.jl")
 
 export
-    AbstractGPKernel, GPMatern52, GPMatern32, GPSquaredExponential, GPCompositeKernel,
+    AbstractGPKernel, GPMatern52, GPMatern32, GPMatern12, GPSquaredExponential, GPCompositeKernel,
     kernel_name
 
 # Mean Related
@@ -129,5 +130,13 @@ export
     estimate_V, variance_moments_mcs, bo_incumbent_objective, bo_ei_objective,
     estimate_V_EOLE, k_vec, posterior_sample, eole_stuff,
     bo_incumbent_objective_response, estimate_propagation, bo_ei_objective_response,
-    AEI_objective, PVC, BC_objective_z, PVC_z, make_gh_nodes, estimate_propagation_gh
+    AEI_objective, PVC, BC_objective_z, PVC_z, make_gh_nodes, estimate_propagation_gh, estimate_propagation_gl, AEI_objective_direct
+
+# models 
+include("models/ishigami.jl")
+
+export
+    ishigami
+
 end
+
