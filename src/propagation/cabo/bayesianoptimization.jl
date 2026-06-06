@@ -16,7 +16,7 @@ m nodes per dimension → m² total points.
 The nodes are converted from z-space (GH is defined for N(0,1))
 to u-space (Φ(z)) to match the GP input encoding.
 """
-function make_gh_nodes(m::Int = 7)
+function make_gh_nodes(m::Int = 15)
     t1d, w1d = gausshermite(m)          # physicist convention: Σwᵢf(tᵢ) ≈ ∫f(t)exp(−t²)dt
 
     z1d = t1d .* sqrt(2)                # N(0,1) nodes  (scale by √2)
@@ -58,8 +58,8 @@ function make_gl_nodes(m::Int = 7)
 end
 
 # TODO: add propagation for bounds
-const GL_NODES, GL_WEIGHTS = make_gl_nodes(7)
-const GH_NODES, GH_WEIGHTS = make_gh_nodes(7)   # 49 deterministic points
+const GL_NODES, GL_WEIGHTS = make_gl_nodes(15)
+const GH_NODES, GH_WEIGHTS = make_gh_nodes(15)   # deterministic points
 
 """
     estimate_propagation_gh(gp, Θμ1, Θμ2)

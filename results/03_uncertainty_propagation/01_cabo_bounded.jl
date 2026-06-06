@@ -59,12 +59,13 @@ physical_model = ishigami
 
 x_names = [:x1, :x2, :x3]
 
-n_train, n_test = 50, 1001
+n_train, n_test = 20, 1001
 data_aug_train = build_design(physical_model, n_train, x_names)
 data_aug_test  = build_design(physical_model, n_test,  x_names)
 
 # initialize GP on θ-space
-metamodel = GaussianProcess(data_aug_train, :y, kernel_type= GPMatern52())
+kernel() = GPMatern52() + GPSquaredExponential()
+metamodel = GaussianProcess(data_aug_train, :y, kernel_type= kernel())
 @time "fit!" fit!(metamodel)
 
 μ_test, σ_test = @time "predict:" predict(metamodel, Matrix(data_aug_test[:, x_names]))
@@ -72,7 +73,7 @@ metamodel = GaussianProcess(data_aug_train, :y, kernel_type= GPMatern52())
 println("MSE: $(round(mse(data_aug_test.y, μ_test), digits=5))")
 println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
 
-function make_pso(; N::Int=80, iters::Int=200, ω=0.8, C1=2.0, C2=2.0)
+function make_pso(; N::Int=50, iters::Int=200, ω=0.8, C1=2.0, C2=2.0)
     p = PSO(N=N, C1=C1, C2=C2, ω=ω)
     p.options.iterations = iters
     return p
@@ -99,16 +100,14 @@ function cabo_loop(
 
         println("\n━━━ CABO Iteration $iter / $max_iter ━━━")
 
-        # ─────────────────────────────────────────────
-        # BO step: optimize surrogate directly in x-space
-        # ─────────────────────────────────────────────
-        res = Metaheuristics.optimize(
-            x -> sign_dir * mean(predict(gp, reshape(x,1,:))[1]),
-            bounds_x,
-            make_pso()
-        )
 
-        x_star = minimizer(res)
+        # so I need to compute from data the current best guess
+        μ_M, σ_M = predict(gp, Matrix(data[:, x_names]))
+        
+        candidates = μ_M .+ 1.0 .* σ_M # α = 1.0
+        x_star_index = direction == :min ? argmin(candidates) : argmax(candidates)
+        x_star = Vector(data[x_star_index, x_names])
+
         x1_star, x2_star, x3_star = x_star
         y_star = physical_model(x1_star, x2_star, x3_star)
 
@@ -145,7 +144,7 @@ function cabo_loop(
             :y         => [y_plus],
         ))
 
-        gp = GaussianProcess(data, :y, kernel_type = GPMatern52())
+        gp = GaussianProcess(data, :y, kernel_type = kernel())
         fit!(gp)
 
         push!(x_history, copy(x_plus))
@@ -157,16 +156,26 @@ function cabo_loop(
         end
     end
 
+
+    # # so I need to compute from data the current best guess
+    # μ_M, σ_M = predict(gp, Matrix(data[:, x_names]))
+    
+    # candidates = μ_M .+ 1.0 .* σ_M # α = 1.0
+    # x_final_index = direction == :min ? argmin(candidates) : argmax(candidates)
+
+    # x_bound = Vector(data[x_final_index, x_names])
+    # y_bound = data[x_final_index, :y]
+
     result_bound = Metaheuristics.optimize(
         x -> sign_dir * (predict(gp, reshape(x,1,:))[1])[1],
         bounds_x,
         make_pso(N=50, iters=200)
     )
-
     x_bound = minimizer(result_bound)
     y_bound = (predict(gp, reshape(x_bound,1,:))[1])[1]
+
     dir_str = uppercase(string(direction))
-    println("\n  ► $(dir_str) bound ≈ $(round(y_bound, sigdigits=5))" *
+    println("\n  ► $(dir_str) bound ≈ $(round(y_bound, digits=5))" *
             "  at  x = [$(round(x_bound[1],digits=4)), $(round(x_bound[2],digits=4)), $(round(x_bound[3],digits=4))]")
  
     return (
@@ -186,18 +195,18 @@ cabo_min = @time "CABO MIN" cabo_loop(
     metamodel,
     data_aug_train,
     x_names;
-    max_iter = 20,
+    max_iter = 30,
     direction = :min,
-    tol       = 1e-5,
+    tol       = 1e-4
 )
  
 cabo_max = @time "CABO MAX" cabo_loop(
     metamodel,
     data_aug_train,
     x_names;
-    max_iter = 20,
+    max_iter = 30,
     direction = :max,
-    tol       = 1e-5,
+    tol       = 1e-4,
 )
  
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -272,7 +281,7 @@ p1 = scatter(
 )
 
 p2 = scatter(
-    cabo_min.L_BO_history,
+    cabo_max.L_BO_history,
     xlabel = "Iteration",
     ylabel = "L_AEI",
     title = "MAX: L_AEI History",

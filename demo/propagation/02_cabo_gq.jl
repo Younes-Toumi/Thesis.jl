@@ -73,7 +73,7 @@ lb = [θ_μ1_LOWER, θ_μ2_LOWER]
 ub = [θ_μ1_UPPER, θ_μ2_UPPER]
 
 const bounds_θ = boxconstraints(lb = [θ_μ1_LOWER, θ_μ2_LOWER], ub = [θ_μ1_UPPER, θ_μ2_UPPER])
-const bounds_z = boxconstraints(lb = [-1.0, -1.0], ub = [1.0, 1.0])
+const bounds_z = boxconstraints(lb = [-3.0, -3.0], ub = [3.0, 3.0])
 
 function build_design(physical_model, n_samples::Int, x_names::Vector{Symbol})
    
@@ -115,12 +115,13 @@ end
 
 x_names = [:u1, :u2, :θ_μ1, :θ_μ2]
 
-n_train, n_test = 40, 1001
+n_train, n_test = 20, 1001
 data_aug_train = build_design(g_function, n_train, x_names)
 data_aug_test  = build_design(g_function, n_test,  x_names)
 
 # initialize GP on θ-space
-metamodel = GaussianProcess(data_aug_train, :y, kernel_type= GPSquaredExponential())
+kernel() = GPMatern52()
+metamodel = GaussianProcess(data_aug_train, :y, kernel_type=kernel())
 @time "fit!" fit!(metamodel)
 
 μ_test, σ_test = @time "predict:" predict(metamodel, Matrix(data_aug_test[:, x_names]))
@@ -129,7 +130,7 @@ println("MSE: $(round(mse(data_aug_test.y, μ_test), digits=5))")
 println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
 
 
-function make_pso(; N::Int=80, iters::Int=200, ω=0.8, C1=2.0, C2=2.0)
+function make_pso(; N::Int=50, iters::Int=100, ω=0.8, C1=2.0, C2=2.0)
     p = PSO(N=N, C1=C1, C2=C2, ω=ω)
     p.options.iterations = iters
     return p
@@ -156,7 +157,6 @@ function cabo_loop(
  
     # ── Shared kernel factory (same kernel for every GP fit) ──────────────────
     # FIX: was GPSquaredExponential() in loop vs mixed kernel for initial fit.
-    kernel_fn() = GPSquaredExponential()
  
     for iter in 1:max_iter
         println("\n━━━ CABO Iteration $iter / $max_iter  [$(direction)] ━━━")
@@ -218,7 +218,7 @@ function cabo_loop(
         ))
  
         # ════ Refit GP with consistent kernel ════════════════════════════════
-        gp = GaussianProcess(data, :y, kernel_type = kernel_fn())
+        gp = GaussianProcess(data, :y, kernel_type = kernel())
         fit!(gp)
  
         push!(θ_history,    copy(θ_plus))
@@ -228,7 +228,7 @@ function cabo_loop(
         push!(L_BC_history, L_BC)
  
         # Convergence: AEI has dropped below tolerance
-        if L_BO < tol and 
+        if L_BO < tol 
             println("\n  ✓ Converged (AEI = $L_BO < tol = $tol) at iteration $iter")
             break
         end
@@ -239,7 +239,7 @@ function cabo_loop(
     res_bound = Metaheuristics.optimize(
         θ -> sign_dir * bo_incumbent_objective_response(gp, θ),
         bounds_θ,
-        make_pso(N=50, iters=200)
+        make_pso(N=50, iters=300)
     )
     θ_bound  = minimizer(res_bound)
     μ_bound, _ = estimate_propagation_gh(gp, θ_bound[1], θ_bound[2])
@@ -275,16 +275,16 @@ cabo_min = @time "CABO MIN" cabo_loop(
     x_names;
     max_iter = 20,
     direction = :min,
-    tol       = 1e-5,
+    tol       = 1e-4,
 )
  
 cabo_max = @time "CABO MAX" cabo_loop(
     metamodel,
     data_aug_train,
     x_names;
-    max_iter = 20;
+    max_iter = 20,
     direction = :max,
-    tol       = 1e-5,
+    tol       = 1e-4,
 )
  
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -296,8 +296,8 @@ println("MIN  E[g] ≈ $(round(cabo_min.μ_bound, digits=4))" *
 println("MAX  E[g] ≈ $(round(cabo_max.μ_bound, digits=4))" *
         "  at θ = $(round.(cabo_max.θ_bound, digits=3))")
 println("-"^60)
-println("Expected:  MIN ≈ −1.35  at (−0.59, 0.51)")
-println("           MAX ≈  1.33  at ( 0.55, 0.83)")
+println("Expected:  MIN ≈ −1.35  at (−0.56, 0.53)")
+println("           MAX ≈  1.33  at ( 0.56, 0.80)")
 println("="^60)
 
 
@@ -310,8 +310,8 @@ using Plots, Statistics
 # ============================================================
 # Grid over epistemic space (x1, θσ)
 # ============================================================
-n_μ1 = 100
-n_μ2 = 100
+n_μ1 = 200
+n_μ2 = 200
 
 μ1_grid = range(-1.5, 1.5, length=n_μ1)
 μ2_grid  = range(-1.5, 1.5, length=n_μ2)
@@ -338,7 +338,9 @@ plt = heatmap(
     ylabel="μ2",
     c=:thermal,
     title="expected response function: E[g(x1, x2)]",
-    colorbar=true
+    colorbar=true,
+    xlims = (-2, 2),
+    ylims = (-2, 2)
 )
 
 # ── overlay the initial training points (μ1, μ2 columns from data_aug) ──────
@@ -350,14 +352,26 @@ scatter!(plt,
 
 scatter!(plt,
     Θs_min[:, 1], Θs_min[:, 2];
-    marker = :cross, color = :green, ms = 7,
-    label  = "added min samples", markerstrokewidth=3
+    marker = :cross, color = :green, ms = 5,
+    label  = "added min samples", markerstrokewidth=2
 )
 
 scatter!(plt,
     Θs_max[:, 1], Θs_max[:, 2];
-    marker = :cross, color = :red, ms = 7,
-    label  = "added max samples", markerstrokewidth=3
+    marker = :cross, color = :red, ms = 5,
+    label  = "added max samples", markerstrokewidth=2
+)
+
+scatter!(plt,
+    [cabo_min.θ_bound[1]], [cabo_min.θ_bound[2]];
+    marker = :star, color = :green, ms = 7,
+    label  = "cabo min", markerstrokewidth=1
+)
+
+scatter!(plt,
+    [cabo_max.θ_bound[1]], [cabo_max.θ_bound[2]];
+    marker = :star, color = :red, ms = 7,
+    label  = "cabo max", markerstrokewidth=1
 )
 
 # ── mark true min and max in epistemic space ──────────────────────────────────

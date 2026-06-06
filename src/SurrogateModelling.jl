@@ -133,10 +133,18 @@ export
     AEI_objective, PVC, BC_objective_z, PVC_z, make_gh_nodes, estimate_propagation_gh, estimate_propagation_gl, AEI_objective_direct
 
 # models 
-include("models/ishigami.jl")
+include("physicalmodels/test_models.jl")
 
 export
-    ishigami
+    ishigami, forrester, g_function
+
+# bootstrap
+include("metamodels/ensemble/bootstrap.jl")
+
+export
+    BootstrapEnsemble, fit!, predict, evalaute!,
+    gp_bootstrap, pce_bootstrap,
+    calibration_coverage, calibration_report
 
 end
 

@@ -120,7 +120,8 @@ data_aug_train = build_design(g_function, n_train, x_names)
 data_aug_test  = build_design(g_function, n_test,  x_names)
 
 # initialize GP on θ-space
-metamodel = GaussianProcess(data_aug_train, :y, kernel_type= GPSquaredExponential())
+kernel() = GPMatern52()
+metamodel = GaussianProcess(data_aug_train, :y, kernel_type= kernel())
 @time "fit!" fit!(metamodel)
 
 μ_test, σ_test = @time "predict:" predict(metamodel, Matrix(data_aug_test[:, x_names]))
@@ -164,8 +165,6 @@ function cabo_loop(
     u2_mc = lhs[:, 2]
  
     # ── Shared kernel factory (same kernel for every GP fit) ──────────────────
-    # FIX: was GPSquaredExponential() in loop vs mixed kernel for initial fit.
-    kernel_fn() = GPSquaredExponential()
  
     for iter in 1:max_iter
         println("\n━━━ CABO Iteration $iter / $max_iter  [$(direction)] ━━━")
@@ -232,7 +231,7 @@ function cabo_loop(
         ))
  
         # ════ Refit GP with consistent kernel ════════════════════════════════
-        gp = GaussianProcess(data, :y, kernel_type = kernel_fn())
+        gp = GaussianProcess(data, :y, kernel_type = kernel())
         fit!(gp)
  
         push!(θ_history,    copy(θ_plus))
