@@ -44,3 +44,31 @@ Returns −PVC_z so that PSO (a minimiser) maximises the posterior variance.
 function BC_objective_z(gp, z, θp)
     return -PVC_z(gp, z, θp)
 end
+
+
+
+# function k_vec(kernel, W, w)
+#     m = size(W,1)
+#     k = zeros(m)
+#     for j in 1:m
+#         k[j] = kernel(w, W[j,:])
+#     end
+#     return k
+# end
+
+# function eole_stuff(gp, W)
+#     # 2. EOLE covariance matrix
+#     m = size(W,1)
+#     K = zeros(m,m)
+
+#     μy = w -> predict(gp, reshape(w, 1, :))[1][1]
+
+
+#     for i in 1:m
+#         for j in 1:m
+#             K[i,j] = gp.kernel_prior(W[i,:], W[j,:])
+#         end
+#     end
+
+#     cholK = cholesky(Symmetric(K + 1e-8I))
+# end

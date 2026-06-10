@@ -305,7 +305,7 @@ physical_model = ishigami
 
 w_names = [:v1, :v2, :v3]
 
-n_train, n_test = 30, 1001
+n_train, n_test = 20, 1001
 
 data_aug_train, data_phys_train =    build_augmented_design(physical_model, specs, n_train; seed=42)
 data_aug_test,  data_phys_test  =    build_augmented_design(physical_model, specs, n_test; seed=123)
@@ -320,7 +320,7 @@ metamodel = GaussianProcess(data_aug_train, :y, kernel_type=kernel())
 println("MSE: $(round(mse(data_aug_test.y, μ_test), digits=5))")
 println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
 
-function make_pso(; N::Int=80, iters::Int=200, ω=0.8, C1=2.0, C2=2.0)
+function make_pso(; N::Int=60, iters::Int=500, ω=0.75, C1=2.0, C2=1.8)
     p = PSO(N=N, C1=C1, C2=C2, ω=ω)
     p.options.iterations = iters
     return p
@@ -333,9 +333,9 @@ function cabo_loop(
     gp_init,
     data_aug_train,
     w_names;
-    max_iter::Int = 20,
+    max_iter::Int     = 20,
     direction::Symbol = :min,
-    tol::Float64 = 1e-8
+    tol_BO::Float64   = 5e-3,
 )
 
     data = copy(data_aug_train)
@@ -386,8 +386,9 @@ function cabo_loop(
 
 
         L_BO   = -minimum(res_plus)
+        span = 1 # maximum(data[:, :y]) - minimum(data[:, :y])
 
-        println("  acquisition θ⁺ = $(round.(θ_plus, digits=4)) AEI = $(round(L_BO, digits=4))")
+        println("  acquisition θ⁺ = $(round.(θ_plus, digits=4)) AEI = $(round(L_BO/span, digits=4))")
 
         # ─────────────────────────────────────────────
         # true evaluation
@@ -404,9 +405,9 @@ function cabo_loop(
         fit!(gp)
 
         push!(θ_history, copy(collect(θ_plus)))
-        push!(L_BO_history, L_BO)
+        push!(L_BO_history, L_BO/span)
 
-        if L_BO < tol
+        if L_BO/span < tol_BO
             println("\n✓ converged")
             break
         end
@@ -415,7 +416,7 @@ function cabo_loop(
     result_bound = Metaheuristics.optimize(
         v -> sign_dir * (predict(gp, reshape(v,1,:))[1])[1],
         bounds_v,
-        make_pso(N=50, iters=200)
+        make_pso(N=100, iters=1000, C1=2.0, C2=2.0)
     )
 
     v_bound = minimizer(result_bound)
@@ -443,7 +444,7 @@ cabo_min = @time "CABO MIN" cabo_loop(
     w_names;
     max_iter = 20,
     direction = :min,
-    tol       = 1e-5
+    tol_BO    = 1e-3
 )
  
 cabo_max = @time "CABO MAX" cabo_loop(
@@ -452,7 +453,7 @@ cabo_max = @time "CABO MAX" cabo_loop(
     w_names;
     max_iter = 20,
     direction = :max,
-    tol       = 1e-5,
+    tol_BO       = 1e-3
 )
  
 # ── Summary ───────────────────────────────────────────────────────────────────

@@ -22,3 +22,42 @@ function g_function(x1::Float64, x2::Float64)
     end
     return result
 end
+
+
+
+function g_function_E(μ1::Float64, μ2::Float64; σ::Float64 = 0.1)
+    α_g = [2.0 3.0 1.0 4.0; 3.0 2.0 4.0 1.0]'
+    β_g = [-0.5 0.5 -0.5 0.5; -0.5 -0.5 0.5 0.5]'
+    c_g = [1.0, -1.5, -1.5, 2.0]'
+
+    result = 0.0
+    σ² = σ^2
+
+    for i in 1:4
+
+        α1 = α_g[i,1]
+        α2 = α_g[i,2]
+
+        β1 = β_g[i,1]
+        β2 = β_g[i,2]
+
+        # E[exp(-α(X-β)^2)]
+        term1 =
+            exp(
+                -α1 * (μ1 - β1)^2 /
+                (1 + 2 * α1 * σ²)
+            ) /
+            sqrt(1 + 2 * α1 * σ²)
+
+        term2 =
+            exp(
+                -α2 * (μ2 - β2)^2 /
+                (1 + 2 * α2 * σ²)
+            ) /
+            sqrt(1 + 2 * α2 * σ²)
+
+        result += c_g[i] * term1 * term2
+    end
+
+    return result
+end
