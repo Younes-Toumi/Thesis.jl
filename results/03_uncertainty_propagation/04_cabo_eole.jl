@@ -426,25 +426,39 @@ h(u, v+) = ∫ k_post((u,v+),(u′,v+)) φ(u′) du′
  
 V_GH from precompute_bc avoids recomputing Cholesky back-solves inside PSO.
 """
-function h_pvc(gp, cholK, u::AbstractVector, v_plus::AbstractVector)
+function h_pvc(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, u_samples)
     
-    h_init = 0
+    kern = gp.kernel_posterior
+    N₀, _   = size(W)
+
+
+    w  = [u; v_plus]
+    k_vec  = [kern(w, W[i, :]) for i in 1:N₀]
+    v1 = cholK.L \ k_vec
+
+    h_sum = 0
     for i in 1:Nx
-        # estimating cov...
-        cov_i = nothing
-        w_j    = [GH_NODES[j, :]; v_plus]
-        k_prior = kern(w_q, w_j)
-        cov_j  = k_prior - dot(v_q, V_GH[:, j])
-        h     += cov_i
+        u_i = u_samples[i, :]
+        w′ = [u_i; v_plus]
+
+        k_vec′  = [kern(w′, W[k, :]) for k in 1:N₀]
+        v2 = cholK.L \ k_vec′
+
+        k = kern(w, w′)
+        cov_i  = k - dot(v1, v2)
+        h_sum     += cov_i
     end
+
+    h = 1/Nx * h_sum
+
     return h
 end
 
 
-function pvc_objective(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector)
-    h   = h_pvc(gp, cholK, W, u, v_plus, V_GH)
+function pvc_objective(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, u_samples)
+    h   = h_pvc(gp, cholK, W, u, v_plus, u_samples)
     phi = φ_vec(u)
-    return -(h * phi)
+    return -max(0.0, h * phi)
 end
 
 
@@ -494,7 +508,7 @@ function cabo_loop(
         σ_qoi = Vector{Float64}(undef, n_samples)
 
         for i in 1:n_samples
-            μ_val, σ_val = estimate_propagation_qoi(gp_samples, v_data[i, :])
+            μ_val, σ_val = estimate_propagation_qoi(qoi_type, gp_samples, u_samples, v_data[i, :])
             μ_qoi[i] = μ_val
             σ_qoi[i] = σ_val
         end
@@ -514,8 +528,9 @@ function cabo_loop(
         )
  
         # 1b. v⁺ = argmax EI(v)
+        # ei_objective(qoi_type, gp_samples, u, v, μ_qoi_star)
         res_v = Metaheuristics.optimize(
-            v -> EI_objective_eole(v, gp_samples, μ_qoi_star),
+            v -> ei_objective(qoi_type, gp_samples, u_samples, v, μ_qoi_star),
             bounds_v,
             make_pso()
         )
@@ -524,7 +539,7 @@ function cabo_loop(
         θ_plus = augmented_to_epistemic(v_plus, specs)        
 
         L_BO   = -minimum(res_v)
-        μ_qoi_plus, σ_qoi_plus = estimate_propagation_qoi(gp, v_plus)
+        μ_qoi_plus, σ_qoi_plus = estimate_propagation_qoi(qoi_type, gp_samples, u_samples, v_plus)
         COV_plus = σ_qoi_plus / abs(μ_qoi_plus)
 
         println("     Acquisition θ⁺ = $(round.(θ_plus, digits=4))    AEI = $(round(L_BO/span, digits=4))" *
@@ -540,18 +555,17 @@ function cabo_loop(
         W = Matrix(data[:, w_names])
         m = size(W, 1)
         K = zeros(m, m)
-        # TODO: USE kernel_posterior here!
+
         for i in 1:m
             for j in 1:m
-                K[i, j] = gp.kernel_prior(W[i,:], W[j,:])
+                K[i, j] = gp.kernel_posterior(W[i,:], W[j,:])
             end
         end
 
         cholK = cholesky(Symmetric(K + 1e-8I))
 
-        V_GH = precompute_bc(gp, cholK, W, v_plus)   # one Cholesky solve per GH node
         res_u  = Metaheuristics.optimize(
-            u -> my_BC_objective(gp, cholK, W, u, v_plus, V_GH),
+            u -> pvc_objective(gp, cholK, W, u, v_plus, u_samples),
             bounds_u,
             make_pso()
         )
@@ -582,19 +596,16 @@ function cabo_loop(
 
     end
 
-    eole = build_eole(gp, Matrix(data[:, w_names]), n_ale)
+    # res_bound = Metaheuristics.optimize(
+    #     v -> sign_dir * my_BO_objective(gp, eole, v),
+    #     bounds_v,
+    #     make_pso()
+    # )
+    # v_bound  = minimizer(res_bound)
+    # μ_bound, _ = estimate_propagation_eole(gp, eole, v_bound)
+    # dir_str = uppercase(string(direction))
 
-
-    res_bound = Metaheuristics.optimize(
-        v -> sign_dir * my_BO_objective(gp, eole, v),
-        bounds_v,
-        make_pso()
-    )
-    v_bound  = minimizer(res_bound)
-    μ_bound, _ = estimate_propagation_eole(gp, eole, v_bound)
-    dir_str = uppercase(string(direction))
-
-    θ_bound = augmented_to_epistemic(v_bound, specs)        
+    # θ_bound = augmented_to_epistemic(v_bound, specs)        
 
 
     println("\n  ► $(dir_str) bound ≈ $(round(μ_bound, sigdigits=5))" *
