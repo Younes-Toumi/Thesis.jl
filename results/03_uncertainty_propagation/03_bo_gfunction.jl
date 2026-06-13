@@ -367,7 +367,7 @@ function my_make_gh_nodes(m::Int = 7, n_ale::Int = 3)
     return nodes, weights
 end
 
-const GH_NODES, GH_WEIGHTS = my_make_gh_nodes(15, n_ale)   # n_GH^n_ale nodes
+const GH_NODES, GH_WEIGHTS = my_make_gh_nodes(12, n_ale)   # n_GH^n_ale nodes
 
 
 
@@ -413,6 +413,20 @@ function my_AEI_objective(gp, v::AbstractVector, μ_M_star::Float64, sign_dir::I
         aei = (μ_M - μ_M_star) * Φ(z) + σ_M * φ(z)
     end
     return -aei
+end
+
+function my_AEI_objective_two(gp, v::AbstractVector, μ_M_star::Float64, sign_dir::Int)
+    
+    n_GH = size(GH_NODES, 1)
+
+    # Build augmented input matrix: each row is [u_j..., v...]
+    X = hcat(GH_NODES,                       # n_GH × d_u  (already in SNS)
+             repeat(v', n_GH, 1))            # n_GH × d_v
+
+    μ, _ = predict(gp, X)    
+    L_bo = mean(max.(sign_dir .* (μ_M_star .- μ), 0.0))
+    
+    return - L_bo
 end
 
 function my_BO_objective(gp, v::AbstractVector)
@@ -595,7 +609,7 @@ function cabo_loop(
  
         # 1b. v⁺ = argmax AEI(v ; μ_M_star): ok
         res_v = Metaheuristics.optimize(
-            v -> my_AEI_objective(gp, v, μ_M_star, sign_dir),
+            v -> my_AEI_objective_two(gp, v, μ_M_star, sign_dir),
             bounds_v,
             make_pso()
         )
@@ -695,21 +709,20 @@ cabo_min = @time "CABO MIN" cabo_loop(
     metamodel,
     data_aug_train,
     w_names;
-    max_iter = 30,
+    max_iter = 15,
     direction = :min,
     tol_BO       = 1e-3,
-    tol_BC       = 5e-2
-
+    tol_BC       = 5e-2,
 )
  
 cabo_max = @time "CABO MAX" cabo_loop(
     metamodel,
     cabo_min.data,
     w_names;
-    max_iter = 30,
+    max_iter = 15,
     direction = :max,
     tol_BO       = 1e-3,
-    tol_BC       = 5e-2
+    tol_BC       = 5e-2,
 )
 
 

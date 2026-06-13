@@ -47,6 +47,7 @@ using LinearAlgebra
 using Metaheuristics
 using QuasiMonteCarlo
 using FastGaussQuadrature
+using KernelFunctions
 
 φ(z) = pdf(Normal(), z)
 Φ(z)   = cdf(Normal(), z)
@@ -227,10 +228,6 @@ function build_augmented_design(
         end
     end
 
-    # Evaluate physical model at x: ok
-    y = [physical_model(x_samples[i, :]...) for i in 1:n_samples]
-
-
     # Build Augmented DataFrame: w = (u, v) = (u1, u2, ..., un, v1, v2, ..., vn): ok
     aug_df, phys_df = DataFrame(), DataFrame()
     u_col = 1
@@ -248,8 +245,14 @@ function build_augmented_design(
         phys_df[!, Symbol("x$j")] = x_samples[:, j]
     end
 
-    aug_df[!, y_symbol] = y
-    phys_df[!, y_symbol] = y
+
+    if physical_model !== nothing
+        # Evaluate physical model at x: ok
+        y = [physical_model(x_samples[i, :]...) for i in 1:n_samples]
+
+        aug_df[!, y_symbol] = y
+        phys_df[!, y_symbol] = y
+    end
 
     return aug_df, phys_df
 end
@@ -348,8 +351,9 @@ n_train, n_test = 20, 1001
 data_aug_train, data_phys_train =    build_augmented_design(physical_model, specs, n_train; seed=42)
 data_aug_test,  data_phys_test  =    build_augmented_design(physical_model, specs, n_test; seed=123)
 
+
 # initialize GP on θ-space
-kernel() = GPMatern52() + GPSquaredExponential()
+kernel() = GPMatern52() #  + GPSquaredExponential()
 metamodel = GaussianProcess(data_aug_train, :y, kernel_type=kernel())
 @time "fit!" fit!(metamodel)
 
@@ -360,83 +364,54 @@ println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
 
 function make_pso(; N::Int=50, ω=0.8, C1=2.0, C2=2.0)
     p = PSO(N=N, ω=ω, C1=C1, C2=C2)
+    p.options.iterations = 100
     return p
 end
 
+function estimate_qoi(qoi_type, gp_samples, u_samples, v)
+    Nx  = size(u_samples, 1)
+    X   = hcat(u_samples, repeat(v', Nx, 1))
 
-function estimate_qoi(qoi_type, gp_sample, u, v)
-    Nx, _  = size(u)
-
-    X = hcat(u, repeat(v', Nx, 1))
-    μ_gp, _ = gp_sample(X)
+    μ_gps = gp_samples(X)
 
     if qoi_type == :mean
-        qoi = 1/Nx * sum(μ_gp)
+        return vec(mean(μ_gps, dims=2))
 
     elseif qoi_type == :var
-        qoi = 1/(Nx - 1) * sum((μ_gp .- 1/Nx .* sum(μ_gp)).^2)
+        return vec(var(μ_gps, dims=2; corrected=true))
 
     elseif qoi_type == :pf
-        qoi = 1/(Nx) * sum(μ_gp .< 0)
-    end
+        return vec(mean(μ_gps .< 0, dims=2))
 
-    return qoi
+    end
+end
+
+function estimate_propagation_qoi(qoi_type, gp_samples, u_samples, v)
+    qoi = vec(estimate_qoi(qoi_type, gp_samples, u_samples, v))
+    return mean(qoi), std(qoi)
 end
 
 
-function estimate_propagation_qoi(qoi_type, gp_samples, u, v)
+function ei_objective(qoi_type, gp_samples, u_samples, v, μ_qoi_star, sign_dir)
 
-    μ_qoi, σ_qoi = nothing, nothing
-    qoi = Vector{Float64}(undef, Ng)
-
-    for j in 1:Ng
-        gp_sample = gp_samples[j]
-        qoi[j] = estimate_qoi(qoi_type, gp_sample, u, v)
-    end
-
-    μ_qoi = 1/Ng        * sum(qoi)
-    σ_qoi = 1/(Ng - 1)  * sum((qoi .- μ_qoi).^2)
-
-    return μ_qoi, σ_qoi
-end
-
-
-function ei_objective(qoi_type, gp_samples, u, v, μ_qoi_star)
+    qoi = estimate_qoi(qoi_type, gp_samples, u_samples, v)
+    L_bo = mean(max.(sign_dir .* (μ_qoi_star .- qoi), 0.0))
     
-    L_bo_sum = 0
-
-    for j in 1:Ng
-        gp_sample = gp_samples[j]
-        qoi = estimate_qoi(qoi_type, gp_sample, u, v)
-        L_bo_sum += max(μ_qoi_star - qoi, 0)
-    end
-
-    L_bo = 1/Ng * L_bo_sum
-    
-    return L_bo
+    return - L_bo
 end
 
-
-
-"""
-    h_pvc(gp, u, v_plus, V_GH) → Float64
- 
-h(u, v+) = ∫ k_post((u,v+),(u′,v+)) φ(u′) du′
-         ≈ Σ_j w_j · k_post((u,v+),(u_j^GH,v+))
- 
-V_GH from precompute_bc avoids recomputing Cholesky back-solves inside PSO.
-"""
 function h_pvc(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, u_samples)
     
     kern = gp.kernel_posterior
     N₀, _   = size(W)
-
+    Nx, _   = size(u_samples)
 
     w  = [u; v_plus]
     k_vec  = [kern(w, W[i, :]) for i in 1:N₀]
     v1 = cholK.L \ k_vec
 
-    h_sum = 0
+    h_sum = 0.0
+
     for i in 1:Nx
         u_i = u_samples[i, :]
         w′ = [u_i; v_plus]
@@ -454,7 +429,6 @@ function h_pvc(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, u_sample
     return h
 end
 
-
 function pvc_objective(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, u_samples)
     h   = h_pvc(gp, cholK, W, u, v_plus, u_samples)
     phi = φ_vec(u)
@@ -462,6 +436,65 @@ function pvc_objective(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, 
 end
 
 
+# ── Posterior EOLE sampler with batch dispatch ────────────────────────────────
+function build_kl_sampler(gp, W::Matrix{Float64}, X_train::Matrix{Float64};
+                           N_samples, energy_threshold=0.99, δ=1e-8)
+
+    kern    = gp.kernel_posterior
+    N0      = size(W, 1)
+
+    # Prior kernel matrices
+    # ── in build_kl_sampler (replace all three comprehensions) ────────────────────
+    K_W   = kernelmatrix(kern, RowVecs(W),       RowVecs(W))
+    K_tr  = kernelmatrix(kern, RowVecs(X_train), RowVecs(X_train))
+    K_ctW = kernelmatrix(kern, RowVecs(X_train), RowVecs(W))
+
+    L = cholesky(Symmetric(K_tr + δ*I)).L
+    A = L' \ (L \ K_ctW)                # K_train⁻¹ K_ctW  (n_train × N0) — reused in closure
+
+    # ── FIX 1: eigendecompose the POSTERIOR covariance, not the prior ─────────
+    # K_W_post = K_W − K_ctW^T K_train⁻¹ K_ctW
+    K_W_post = Symmetric(K_W .- K_ctW' * A)
+
+    eig    = eigen(K_W_post)
+    λ_post = max.(eig.values, 0.0)
+    V_post = eig.vectors
+    idx    = sortperm(λ_post, rev=true)
+    λ_post, V_post = λ_post[idx], V_post[:, idx]
+
+    # Drop modes below numerical floor to avoid 1/√λ blowup
+    floor  = max(1e-10 * sum(λ_post), 1e-14)
+    keep   = λ_post .> floor
+    V_r, λ_r = V_post[:, keep], λ_post[keep]
+    r = sum(keep)
+
+    print("KL: N0 = $N0,  r = $r modes\n")
+
+    # ── FIX 2: Form 2 coefficient — gives Var[h(w)] ≈ k_post(w,w) ────────────
+    Ξ         = randn(r, N_samples)
+    coeff_mat = V_r * (Ξ ./ reshape(sqrt.(λ_r), :, 1))  # N0 × N_samples
+
+    # ── Closure: dispatch on AbstractVector (single) vs AbstractMatrix (batch) ─
+    return function gp_samples(input)
+        if input isa AbstractVector
+            # ── single point ──────────────────────────────────────────────────
+            kW   = vec(kernelmatrix(kern, RowVecs(reshape(input,1,:)), RowVecs(W)))
+            ktr  = vec(kernelmatrix(kern, RowVecs(reshape(input,1,:)), RowVecs(X_train)))
+            μ_w  = predict(gp, reshape(input, 1, :); mode=:mean)
+            kW_post = kW .- A' * ktr           # N0-vector  (= 0 at training pts)
+            return μ_w .+ coeff_mat' * kW_post  # N_samples-vector
+
+        else
+            # ── batch: input is Nx × d ────────────────────────────────────────
+            K_qW   = kernelmatrix(kern, RowVecs(input), RowVecs(W))        # Nx_q × N0
+            K_qtr  = kernelmatrix(kern, RowVecs(input), RowVecs(X_train))  # Nx_q × n_train
+            μ_q    = predict(gp, input; mode=:mean)        # Nx_q-vector (one predict call)
+            K_qW_post = K_qW .- K_qtr * A         # Nx_q × N0
+
+            return μ_q' .+ coeff_mat' * K_qW_post'  # N_samples × Nx_q
+        end
+    end
+end
 
 
 # # # # # # # # # # # # # # # # # # # # #
@@ -484,17 +517,25 @@ function cabo_loop(
     L_BO_history = Float64[]
     L_BC_history = Float64[]
 
+    Nx = 500
 
+    qoi_type = :mean
 
-    # TODO: generate Nx samples
+    W_aug, W_phys =    build_augmented_design(nothing, specs, Nx; seed=42)
+    u_samples = Matrix(W_aug[:, u_names])
+
     # TODO: compute the initial span
     # qoi = estimate_qoi(qoi_type, gp_sample, u, v)
-    # span = maximum(qoi) - minimum(qoi)
 
+    span = 1 # maximum(qoi) - minimum(qoi)
+    Ng = 200
 
     for iter in 1:max_iter
         # TODO: generate the Ng GPR samples
-        gp_samples = nothing # spmething that uses the eole/kl 
+
+        X_train = data[:, w_names]
+        gp_samples = build_kl_sampler(gp, Matrix(W_aug), Matrix(X_train); N_samples=Ng)
+        
         println("\n━━━ CABO Iteration $iter / $max_iter ━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         # ════ Part 1: BO engine ═══════════════════════════════════════════════
@@ -509,10 +550,11 @@ function cabo_loop(
 
         for i in 1:n_samples
             μ_val, σ_val = estimate_propagation_qoi(qoi_type, gp_samples, u_samples, v_data[i, :])
+            
             μ_qoi[i] = μ_val
             σ_qoi[i] = σ_val
         end
-            
+        
         candidates = μ_qoi .+ 1.0 .* σ_qoi # α = 1.0
         v_star_index = (direction == :min) ? argmin(candidates) : argmax(candidates)
 
@@ -523,14 +565,15 @@ function cabo_loop(
         θ_star = augmented_to_epistemic(v_star, specs)
 
         println("    Incumbent  θ* = $(round.(θ_star, digits=3))" *
-                "    μ_qoi(θ*) ≈ $(round(μ_qoi_star, digits=3))" * 
+                "    μ_qoi(θ*) ≈ $(round(μ_qoi_star, digits=3))"  * 
                 "    σ_qoi(θ*) ≈ $(round(σ_qoi_star, digits=3))"
         )
  
+
+         
         # 1b. v⁺ = argmax EI(v)
-        # ei_objective(qoi_type, gp_samples, u, v, μ_qoi_star)
         res_v = Metaheuristics.optimize(
-            v -> ei_objective(qoi_type, gp_samples, u_samples, v, μ_qoi_star),
+            v -> ei_objective(qoi_type, gp_samples, u_samples, v, μ_qoi_star, sign_dir),
             bounds_v,
             make_pso()
         )
@@ -540,10 +583,11 @@ function cabo_loop(
 
         L_BO   = -minimum(res_v)
         μ_qoi_plus, σ_qoi_plus = estimate_propagation_qoi(qoi_type, gp_samples, u_samples, v_plus)
+        
         COV_plus = σ_qoi_plus / abs(μ_qoi_plus)
 
-        println("     Acquisition θ⁺ = $(round.(θ_plus, digits=4))    AEI = $(round(L_BO/span, digits=4))" *
-                "    COV = $(round(COV_plus, sigdigits=4))")
+        println("     Acquisition θ⁺ = $(round.(θ_plus, digits=4))    EI = $(round(L_BO/span, digits=4))" *
+                "     COV = $(round(COV_plus, sigdigits=4))")
 
 
         if L_BO/span < tol_BO && COV_plus < tol_BC
@@ -553,15 +597,7 @@ function cabo_loop(
 
         # ════ Part 2: BC engine ═══════════════════════════════════════════════
         W = Matrix(data[:, w_names])
-        m = size(W, 1)
-        K = zeros(m, m)
-
-        for i in 1:m
-            for j in 1:m
-                K[i, j] = gp.kernel_posterior(W[i,:], W[j,:])
-            end
-        end
-
+        K = kernelmatrix(gp.kernel_posterior, RowVecs(W))
         cholK = cholesky(Symmetric(K + 1e-8I))
 
         res_u  = Metaheuristics.optimize(
@@ -596,28 +632,42 @@ function cabo_loop(
 
     end
 
-    # res_bound = Metaheuristics.optimize(
-    #     v -> sign_dir * my_BO_objective(gp, eole, v),
-    #     bounds_v,
-    #     make_pso()
-    # )
-    # v_bound  = minimizer(res_bound)
-    # μ_bound, _ = estimate_propagation_eole(gp, eole, v_bound)
-    # dir_str = uppercase(string(direction))
 
-    # θ_bound = augmented_to_epistemic(v_bound, specs)        
+    v_data = Matrix(data[:, v_names])
+    n_samples, _ = size(data)
+
+    μ_qoi_bound = Vector{Float64}(undef, n_samples)
+    σ_qoi_bound = Vector{Float64}(undef, n_samples)
+
+    X_train = data[:, w_names]        
+    gp_samples = build_kl_sampler(gp, Matrix(W_aug), Matrix(X_train); N_samples=Ng)
 
 
-    println("\n  ► $(dir_str) bound ≈ $(round(μ_bound, sigdigits=5))" *
+    for i in 1:n_samples
+        μ_val, σ_val = estimate_propagation_qoi(qoi_type, gp_samples, u_samples, v_data[i, :])
+        
+        μ_qoi_bound[i] = μ_val
+        σ_qoi_bound[i] = σ_val
+    end
+    
+    candidates = μ_qoi_bound # .+ 1.0 .* σ_qoi # α = 1.0
+    v_bound_index = (direction == :min) ? argmin(candidates) : argmax(candidates)
+
+    v_bound = Vector(data[v_bound_index, v_names])        
+    μ_qoi_bound_final = μ_qoi_bound[v_bound_index]     
+    dir_str = uppercase(string(direction))
+
+    θ_bound = augmented_to_epistemic(v_bound, specs)        
+
+
+    println("\n  ► $(dir_str) bound ≈ $(round(μ_qoi_bound_final, sigdigits=5))" *
             "  at  θ = $(round.(θ_bound, digits=4))")
  
-
-    
     return (
         gp = gp,
         data = data,
         θ_bound = θ_bound,
-        μ_bound = μ_bound,
+        μ_bound = μ_qoi_bound_final,
         θ_history = θ_history,
         L_BO_history = L_BO_history,
         L_BC_history = L_BC_history
@@ -629,7 +679,7 @@ cabo_min = @time "CABO MIN" cabo_loop(
     metamodel,
     data_aug_train,
     w_names;
-    max_iter = 20,
+    max_iter = 15,
     direction = :min,
     tol_BO       = 5e-3,
     tol_BC       = 5e-2
@@ -638,14 +688,13 @@ cabo_min = @time "CABO MIN" cabo_loop(
  
 cabo_max = @time "CABO MAX" cabo_loop(
     metamodel,
-    data_aug_train,
+    cabo_min.data,
     w_names;
-    max_iter = 20,
+    max_iter = 15,
     direction = :max,
     tol_BO       = 5e-3,
     tol_BC       = 5e-2
 )
-
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 println("\n" * "="^60)
