@@ -400,37 +400,53 @@ function ei_objective(qoi_type, gp_samples, u_samples, v, μ_qoi_star, sign_dir)
     return - L_bo
 end
 
-function h_pvc(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, u_samples)
+function precompute_h_pvc_terms(gp, cholK, W, v_plus::AbstractVector, u_samples)
     
     kern = gp.kernel_posterior
-    N₀, _   = size(W)
-    Nx, _   = size(u_samples)
+    Nx      = size(u_samples, 1)
+    W_prime = hcat(u_samples, repeat(v_plus', Nx, 1))    # Nx × d
+    K_prime = kernelmatrix(kern, RowVecs(W_prime), RowVecs(W))
+    v2_sum  = cholK.L \ vec(sum(K_prime, dims=1))         # N₀-vector
+    return W_prime, v2_sum
+end
 
-    w  = [u; v_plus]
-    k_vec  = [kern(w, W[i, :]) for i in 1:N₀]
-    v1 = cholK.L \ k_vec
+function h_pvc(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, W_prime, v2_sum)
+    
+    kern = gp.kernel_posterior
+    Nx      = size(W_prime, 1)
+    w_mat   = reshape([u; v_plus], 1, :)
 
-    h_sum = 0.0
+    k_vec       = vec(kernelmatrix(kern, RowVecs(w_mat), RowVecs(W)))
+    k_cross_sum = sum(kernelmatrix(kern, RowVecs(w_mat), RowVecs(W_prime))) # Nx evals
 
-    for i in 1:Nx
-        u_i = u_samples[i, :]
-        w′ = [u_i; v_plus]
+    v1          = cholK.L \ k_vec
 
-        k_vec′  = [kern(w′, W[k, :]) for k in 1:N₀]
-        v2 = cholK.L \ k_vec′
+    return (k_cross_sum - dot(v1, v2_sum)) / Nx
 
-        k = kern(w, w′)
-        cov_i  = k - dot(v1, v2)
-        h_sum     += cov_i
-    end
+    # w  = [u; v_plus]
+    # k_vec  = [kern(w, W[i, :]) for i in 1:N₀]
+    # v1 = cholK.L \ k_vec
 
-    h = 1/Nx * h_sum
+    # h_sum = 0.0
+
+    # for i in 1:Nx
+    #     u_i = u_samples[i, :]
+    #     w′ = [u_i; v_plus]
+
+    #     k_vec′  = [kern(w′, W[k, :]) for k in 1:N₀]
+    #     v2 = cholK.L \ k_vec′
+
+    #     k = kern(w, w′)
+    #     h_sum     += k - dot(v1, v2)
+    # end
+
+    # h = 1/Nx * h_sum
 
     return h
 end
 
-function pvc_objective(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, u_samples)
-    h   = h_pvc(gp, cholK, W, u, v_plus, u_samples)
+function pvc_objective(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, W_prime, v2_sum)
+    h   = h_pvc(gp, cholK, W, u, v_plus, W_prime, v2_sum)
     phi = φ_vec(u)
     return -max(0.0, h * phi)
 end
@@ -444,7 +460,7 @@ function build_kl_sampler(gp, W::Matrix{Float64}, X_train::Matrix{Float64};
     N0      = size(W, 1)
 
     # Prior kernel matrices
-    # ── in build_kl_sampler (replace all three comprehensions) ────────────────────
+    # ── in build_kl_sampler  ────────────────────
     K_W   = kernelmatrix(kern, RowVecs(W),       RowVecs(W))
     K_tr  = kernelmatrix(kern, RowVecs(X_train), RowVecs(X_train))
     K_ctW = kernelmatrix(kern, RowVecs(X_train), RowVecs(W))
@@ -468,7 +484,7 @@ function build_kl_sampler(gp, W::Matrix{Float64}, X_train::Matrix{Float64};
     V_r, λ_r = V_post[:, keep], λ_post[keep]
     r = sum(keep)
 
-    print("KL: N0 = $N0,  r = $r modes\n")
+    # print("KL: N0 = $N0,  r = $r modes\n")
 
     # ── FIX 2: Form 2 coefficient — gives Var[h(w)] ≈ k_post(w,w) ────────────
     Ξ         = randn(r, N_samples)
@@ -517,7 +533,7 @@ function cabo_loop(
     L_BO_history = Float64[]
     L_BC_history = Float64[]
 
-    Nx = 500
+    Nx = 100
 
     qoi_type = :mean
 
@@ -528,7 +544,7 @@ function cabo_loop(
     # qoi = estimate_qoi(qoi_type, gp_sample, u, v)
 
     span = 1 # maximum(qoi) - minimum(qoi)
-    Ng = 200
+    Ng = 50
 
     for iter in 1:max_iter
         # TODO: generate the Ng GPR samples
@@ -572,7 +588,7 @@ function cabo_loop(
 
          
         # 1b. v⁺ = argmax EI(v)
-        res_v = Metaheuristics.optimize(
+        res_v =  Metaheuristics.optimize(
             v -> ei_objective(qoi_type, gp_samples, u_samples, v, μ_qoi_star, sign_dir),
             bounds_v,
             make_pso()
@@ -600,8 +616,10 @@ function cabo_loop(
         K = kernelmatrix(gp.kernel_posterior, RowVecs(W))
         cholK = cholesky(Symmetric(K + 1e-8I))
 
-        res_u  = Metaheuristics.optimize(
-            u -> pvc_objective(gp, cholK, W, u, v_plus, u_samples),
+        W_prime, v2_sum = precompute_h_pvc_terms(gp, cholK, W, v_plus, u_samples)
+
+        res_u  = @time "BC optimize" Metaheuristics.optimize(
+            u -> pvc_objective(gp, cholK, W, u, v_plus, W_prime, v2_sum),
             bounds_u,
             make_pso()
         )
@@ -624,7 +642,7 @@ function cabo_loop(
         ))
 
         gp = GaussianProcess(data, :y, kernel_type = kernel())
-        fit!(gp)
+        @time "gp fit" fit!(gp)
 
         push!(θ_history, copy(collect(θ_plus)))
         push!(L_BO_history, L_BO/span)
