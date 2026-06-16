@@ -1,3 +1,4 @@
+
 # ============================================================
 # Gaussian Process surrogate model
 # ============================================================
@@ -31,6 +32,7 @@ mutable struct GaussianProcess <: UQModel
     mean_type:: AbstractGPMean
     kernel_type:: AbstractGPKernel
     θ::NamedTuple
+    flat_θ::Vector{Float64}
 
     posterior::Union{AbstractGPs.PosteriorGP, Nothing}
 
@@ -112,6 +114,7 @@ function GaussianProcess(
         mean_type,
         kernel_type,
         θ0,
+        flat_θ0,
         nothing,
         y_symbol,
         x_names,
@@ -160,7 +163,7 @@ automatic differentiation.
 [`predict`](@ref), [`evaluate!`](@ref)
 """
 function fit!(gp::GaussianProcess)
-    
+
     y_scale = var(gp.y) # scale noise relative to output, this avoids hardcoding across problems
     flat_θ0, _ = value_flatten(gp.θ) # re-flatten in case fit! is called again after manual θ updates
 
@@ -181,12 +184,7 @@ function fit!(gp::GaussianProcess)
         fx = f(Xt, noise)
     
         val = -logpdf(fx, gp.y) # negative because Optim.jl minimises
-        
-        # println(
-        #     "nlml val: $(round.(val, digits=4)) ", 
-        #     "lengthscale: $(round.(θ.lengthscale, digits=4)) ",
-        #     "variance: $(round.(θ.variance, digits=4)) ",
-        #     "noise: $(round.(θ.noise, digits=4))")
+
 
         return val
 
@@ -206,7 +204,7 @@ function fit!(gp::GaussianProcess)
             end,
             flat_θ0,
             LBFGS(),
-            Optim.Options(show_trace=false, iterations=100);
+            Optim.Options(show_trace=false);
             inplace=true
         )
     end
@@ -214,9 +212,8 @@ function fit!(gp::GaussianProcess)
     # Run from default θ0 + n_restarts-1 random perturbations
     flat_θ0, _ = value_flatten(gp.θ)
 
-    n_restarts = 10
+    n_restarts = 5
     results = map(1:n_restarts) do i
-        # println("RUN NUMBER $i \n\n\n\n")
         θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.5 .* randn(length(flat_θ0))
         try
             run_optimization(θ_start)
@@ -231,25 +228,12 @@ function fit!(gp::GaussianProcess)
     best    = argmin(r -> r.minimum, valid)
     θ_opt = gp.unflatten(best.minimizer)
 
-    ######
+    gp.flat_θ = best.minimizer    # ← store the UNCONSTRAINED optimum, not gp.θ
+    gp.θ      = θ_opt
+    
 
-    # result = optimize(
-    #     nlml,
-    #     (g, θ) -> begin
-    #         # computes nlml(θ) and ∇nlml(θ) in one backward pass
-    #         _, grad = DifferentiationInterface.value_and_gradient(nlml, AutoMooncake(; config=nothing), θ)
-    #         g .= grad # in-place, no new allocation
-    #     end,
-    #     flat_θ0,
-    #     LBFGS(),
-    #     Optim.Options(show_trace=false, iterations=50);
-    #     inplace=true   # true when gradient is written in-place
-    # )
-
-    # θ_opt = gp.unflatten(result.minimizer)
 
     # Build posterior with optimised hyperparameters
-    gp.θ = θ_opt
     kernel_opt = build_kernel(gp.kernel_type, θ_opt)
     f_opt      = GP(kernel_opt)
 
@@ -260,12 +244,112 @@ function fit!(gp::GaussianProcess)
     gp.θ         = θ_opt
     gp.posterior = posterior(fx, gp.y)
     
-    # gp.mean_posterior   = build_mean(gp.mean_type, gp.X, gp.y)
     gp.mean_posterior = x -> mean(gp.posterior(x))
     gp.kernel_posterior = build_kernel(gp.kernel_type, θ_opt)
 
     return gp
 end
+
+
+"""
+    refit!(gp::GaussianProcess, X_new, y_new; n_restarts=2, iterations=50)
+
+Append new training points and re-optimise hyperparameters, WARM-STARTING
+from gp.θ (the previous optimum) instead of restarting from scratch.
+
+Use the original fit! (10 restarts, large perturbations) ONLY for the
+initial fit. Use refit! for every subsequent adaptive sampling iteration.
+"""
+function refit!(gp::GaussianProcess, X_new::AbstractMatrix{Float64}, y_new::AbstractVector{Float64})
+
+    gp.X = vcat(gp.X, X_new)
+    gp.y = vcat(gp.y, y_new)
+
+    y_scale = var(gp.y) # scale noise relative to output, this avoids hardcoding across problems
+    flat_θ0 = gp.flat_θ
+
+    mean = build_mean(gp.mean_type, gp.X, gp.y)
+    Xt = collect(gp.X')
+
+    function nlml(flat_θ)
+        θ = gp.unflatten(flat_θ)                # recover NamedTuple so kernel can unpack named fields
+        kernel = build_kernel(gp.kernel_type, θ)     # kernels are immutable -> rebuild on every call
+        
+        f = GP(mean, kernel)
+
+        # TODO noise: fixed adaptive jitter for deterministic simulators learned parameter for noisy observations?
+        # learn_noise = true  -> σ² is a free parameter (noisy observations)
+        # learn_noise = false -> adaptive jitter = 10% of output variance (deterministic simulator)
+        noise = gp.learn_noise ? θ.noise : 1e-1 * y_scale
+
+        fx = f(Xt, noise)
+    
+        val = -logpdf(fx, gp.y) # negative because Optim.jl minimises
+
+
+        return val
+
+    end
+
+
+    # TODO: refactor this into a seperate optimize.jl file
+    # Run from default θ0 + n_restarts-1 random perturbations
+    function run_optimization(flat_θ0)
+        return optimize(
+            nlml,
+            (g, θ) -> begin
+                _, grad = DifferentiationInterface.value_and_gradient(
+                    nlml, AutoMooncake(; config=nothing), θ
+                )
+                g .= grad
+            end,
+            flat_θ0,
+            LBFGS(),
+            Optim.Options(show_trace=false);
+            inplace=true
+        )
+    end
+
+    # Run from default θ0 + n_restarts-1 random perturbations
+    n_restarts = 2
+    results = map(1:n_restarts) do i
+        θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.2 .* randn(length(flat_θ0))
+        try
+            run_optimization(θ_start)
+        catch
+            nothing  # skip failed starts (e.g. Cholesky errors)
+        end
+    end
+
+    # Keep the result with the lowest NLML
+    valid   = filter(!isnothing, results)
+    isempty(valid) && error("All optimisation restarts failed.")
+    best    = argmin(r -> r.minimum, valid)
+    θ_opt = gp.unflatten(best.minimizer)
+
+    gp.flat_θ = best.minimizer    # ← store the UNCONSTRAINED optimum, not gp.θ
+    gp.θ      = θ_opt
+    
+
+
+    # Build posterior with optimised hyperparameters
+    kernel_opt = build_kernel(gp.kernel_type, θ_opt)
+    f_opt      = GP(kernel_opt)
+
+    # Tighten jitter from 0.1*var(y) → 1e-5: interpolate training data closely for posterior
+    noise      = gp.learn_noise ? θ_opt.noise : 1e-5
+    fx         = f_opt(gp.X', noise)
+ 
+    gp.θ         = θ_opt
+    gp.posterior = posterior(fx, gp.y)
+    
+    gp.mean_posterior = x -> mean(gp.posterior(x))
+    gp.kernel_posterior = build_kernel(gp.kernel_type, θ_opt)
+
+    return gp
+end
+
+
 
 # ============================================================
 # Prediction

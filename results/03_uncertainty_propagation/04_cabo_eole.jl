@@ -18,7 +18,7 @@
 # leading modes that explain ≥ energy_threshold of total variance.
 # ==============================================================================
 
-using LinearAlgebra, Statistics, Random
+using LinearAlgebra, Statistics, Random, Printf
 
 # ==============================================================================
 # 1.  Cache struct
@@ -544,11 +544,9 @@ function cabo_loop(
     # qoi = estimate_qoi(qoi_type, gp_sample, u, v)
 
     span = 1 # maximum(qoi) - minimum(qoi)
-    Ng = 50
+    Ng = 100
 
     for iter in 1:max_iter
-        # TODO: generate the Ng GPR samples
-
         X_train = data[:, w_names]
         gp_samples = build_kl_sampler(gp, Matrix(W_aug), Matrix(X_train); N_samples=Ng)
         
@@ -579,12 +577,13 @@ function cabo_loop(
         σ_qoi_star = σ_qoi[v_star_index]
 
         θ_star = augmented_to_epistemic(v_star, specs)
-
-        println("    Incumbent  θ* = $(round.(θ_star, digits=3))" *
-                "    μ_qoi(θ*) ≈ $(round(μ_qoi_star, digits=3))"  * 
-                "    σ_qoi(θ*) ≈ $(round(σ_qoi_star, digits=3))"
-        )
  
+        @printf("    Incumbent θ* = %s    μ_qoi(θ*) ≈ %.2e    σ_qoi(θ*) ≈ %.2e\n",
+                string(round.(θ_star, digits=3)),
+                μ_qoi_star,
+                σ_qoi_star
+        )
+
 
          
         # 1b. v⁺ = argmax EI(v)
@@ -602,8 +601,8 @@ function cabo_loop(
         
         COV_plus = σ_qoi_plus / abs(μ_qoi_plus)
 
-        println("     Acquisition θ⁺ = $(round.(θ_plus, digits=4))    EI = $(round(L_BO/span, digits=4))" *
-                "     COV = $(round(COV_plus, sigdigits=4))")
+        println("    Acquisition θ⁺ = $(round.(θ_plus, digits=4))    EI = $(round(L_BO/span, digits=4))" *
+                "    COV = $(round(COV_plus, sigdigits=4))")
 
 
         if L_BO/span < tol_BO && COV_plus < tol_BC
@@ -618,7 +617,7 @@ function cabo_loop(
 
         W_prime, v2_sum = precompute_h_pvc_terms(gp, cholK, W, v_plus, u_samples)
 
-        res_u  = @time "BC optimize" Metaheuristics.optimize(
+        res_u  = Metaheuristics.optimize(
             u -> pvc_objective(gp, cholK, W, u, v_plus, W_prime, v2_sum),
             bounds_u,
             make_pso()
@@ -641,8 +640,9 @@ function cabo_loop(
             :y         => [y_plus],
         ))
 
-        gp = GaussianProcess(data, :y, kernel_type = kernel())
-        @time "gp fit" fit!(gp)
+        # gp = GaussianProcess(data, :y, kernel_type = kernel())
+        # @time "    fit!" fit!(gp)
+        refit!(gp, reshape(w_plus, 1, :), [y_plus])
 
         push!(θ_history, copy(collect(θ_plus)))
         push!(L_BO_history, L_BO/span)

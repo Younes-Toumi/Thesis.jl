@@ -6,13 +6,21 @@ using LinearAlgebra
 using DataFrames
 using Plots
 using Random
+using Printf
 using UncertaintyQuantification
 using DifferentiationInterface
 using Clustering
 using FastGaussQuadrature
 using Distributions: Normal, Uniform, cdf, quantile
-
+using QuasiMonteCarlo
 import Mooncake
+
+# 0. helper functions ────────────────────────────────────────────────────────────────────────── #
+φ(z) = pdf(Normal(), z)
+Φ(z)   = cdf(Normal(), z)
+Φ⁻¹(p) = quantile(Normal(), p)
+φ_vec(u) = prod(pdf.(Normal(), u))   # φ(u) = ∏ N(u_i; 0,1)
+
 
 # 1. metamodels ────────────────────────────────────────────────────────────────────────── #
 # 1.1. Gaussian Process
@@ -50,7 +58,7 @@ include("metamodels/gp/gaussianprocess.jl")
 
 export 
     GaussianProcess,
-    fit!, predict
+    fit!, refit!, predict
 
 
 # 1.2. Polynomial Chaos Expansion
@@ -116,21 +124,24 @@ include("metrics/metrics.jl")
 export 
     mse, rmse, nrmse, q2
 
-# 4. Adaptive Sampling
+# 4. CABO ────────────────────────────────────────────────────────────────────────── #
 
 include("propagation/augmentedspace.jl")
 include("propagation/cabo/bayesianoptimization.jl") 
 include("propagation/cabo/bayesiancubature.jl")
+include("propagation/cabo/kl_sampling.jl")
 include("propagation/cabo/cabo.jl")
 
 export 
     AugmentedModel, sample, to_physical, evaluate, build_dataset
 
 export 
-    estimate_V, variance_moments_mcs, bo_incumbent_objective, bo_ei_objective,
-    estimate_V_EOLE, k_vec, posterior_sample, eole_stuff,
-    bo_incumbent_objective_response, estimate_propagation, bo_ei_objective_response,
-    AEI_objective, PVC, BC_objective_z, PVC_z, make_gh_nodes, estimate_propagation_gh, estimate_propagation_gl, AEI_objective_direct
+    ei_objective,
+    precompute_h_pvc_terms, h_pvc, pvc_objective, u_objective,
+    build_kl_sampler,
+    # compute_relaxed_bounds, θ_to_v, v_to_θ, x_to_u, u_to_x, InputSpec, build_augmented_design, augmented_to_physical, augmented_to_epistemic,
+    estimate_qoi, estimate_propagation_qoi # make_pso, cabo_loop
+
 
 # models 
 include("physicalmodels/test_models.jl")

@@ -48,7 +48,7 @@ y_test = data_test[:, :y]
 
 metamodel = GaussianProcess(data_train, :y, kernel_type=GPSquaredExponential())
 
-fit!(metamodel)
+@time "fit!" fit!(metamodel)
 
 μ, σ = predict(metamodel, reshape(X_test, :, 1))
 y_pred = μ
@@ -122,6 +122,8 @@ end
 # 1. dense support grid (separate from training data)
 W       = rand(50, 1)
 kl_samples = 1000
+
+print("\n\n")
 
 # 2. build the sampler (draws ξ_s here, fixes them)
 f = @time "build_kl_sampler: " build_kl_sampler(metamodel, W, reshape(X_train, :, 1); N_samples=kl_samples)
