@@ -11,15 +11,25 @@ using UncertaintyQuantification
 using DifferentiationInterface
 using Clustering
 using FastGaussQuadrature
-using Distributions: Normal, Uniform, cdf, quantile
+using Distributions
 using QuasiMonteCarlo
-import Mooncake
+using Mooncake
+
+using KernelFunctions
+using AbstractGPs
+using ParameterHandling
+using Optim
+using Zygote
+
+using Metaheuristics
+
+
 
 # 0. helper functions ────────────────────────────────────────────────────────────────────────── #
-φ(z) = pdf(Normal(), z)
-Φ(z)   = cdf(Normal(), z)
-Φ⁻¹(p) = quantile(Normal(), p)
-φ_vec(u) = prod(pdf.(Normal(), u))   # φ(u) = ∏ N(u_i; 0,1)
+φ(z)     = pdf(Normal(), z)
+Φ(z)     = cdf(Normal(), z)
+Φ⁻¹(p)   = quantile(Normal(), p)
+φ_vec(u) = prod(pdf.(Normal(), u))
 
 
 # 1. metamodels ────────────────────────────────────────────────────────────────────────── #
@@ -48,11 +58,7 @@ export
 
 
 # GP Constructor Related
-using KernelFunctions
-using AbstractGPs
-using ParameterHandling
-using Optim
-using Zygote
+
 
 include("metamodels/gp/gaussianprocess.jl")
 
@@ -133,14 +139,12 @@ include("propagation/cabo/kl_sampling.jl")
 include("propagation/cabo/cabo.jl")
 
 export 
-    AugmentedModel, sample, to_physical, evaluate, build_dataset
-
-export 
     ei_objective,
     precompute_h_pvc_terms, h_pvc, pvc_objective, u_objective,
     build_kl_sampler,
-    # compute_relaxed_bounds, θ_to_v, v_to_θ, x_to_u, u_to_x, InputSpec, build_augmented_design, augmented_to_physical, augmented_to_epistemic,
-    estimate_qoi, estimate_propagation_qoi # make_pso, cabo_loop
+    compute_relaxed_bounds, θ_to_v, v_to_θ, x_to_u, u_to_x, 
+    AbstractInputSpec, PreciseSpec, IntervalSpec, HybridSpec, InputSpec, spec_names, build_augmented_design, augmented_to_physical, augmented_to_epistemic, build_bounds,
+    estimate_qoi, estimate_propagation_qoi, best_candidate, make_pso, cabo_loop
 
 
 # models 

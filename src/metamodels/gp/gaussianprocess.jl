@@ -194,7 +194,7 @@ function fit!(gp::GaussianProcess)
     # TODO: refactor this into a seperate optimize.jl file
     # Run from default θ0 + n_restarts-1 random perturbations
     function run_optimization(flat_θ0)
-        return optimize(
+        return Optim.optimize(
             nlml,
             (g, θ) -> begin
                 _, grad = DifferentiationInterface.value_and_gradient(
@@ -237,8 +237,8 @@ function fit!(gp::GaussianProcess)
     kernel_opt = build_kernel(gp.kernel_type, θ_opt)
     f_opt      = GP(kernel_opt)
 
-    # Tighten jitter from 0.1*var(y) → 1e-5: interpolate training data closely for posterior
-    noise      = gp.learn_noise ? θ_opt.noise : 1e-5
+    # Tighten jitter from 0.1*var(y) → 1e-8: interpolate training data closely for posterior
+    noise      = gp.learn_noise ? θ_opt.noise : 1e-8
     fx         = f_opt(gp.X', noise)
  
     gp.θ         = θ_opt
@@ -295,7 +295,7 @@ function refit!(gp::GaussianProcess, X_new::AbstractMatrix{Float64}, y_new::Abst
     # TODO: refactor this into a seperate optimize.jl file
     # Run from default θ0 + n_restarts-1 random perturbations
     function run_optimization(flat_θ0)
-        return optimize(
+        return Optim.optimize(
             nlml,
             (g, θ) -> begin
                 _, grad = DifferentiationInterface.value_and_gradient(
@@ -337,7 +337,7 @@ function refit!(gp::GaussianProcess, X_new::AbstractMatrix{Float64}, y_new::Abst
     f_opt      = GP(kernel_opt)
 
     # Tighten jitter from 0.1*var(y) → 1e-5: interpolate training data closely for posterior
-    noise      = gp.learn_noise ? θ_opt.noise : 1e-5
+    noise      = gp.learn_noise ? θ_opt.noise : 1e-8
     fx         = f_opt(gp.X', noise)
  
     gp.θ         = θ_opt

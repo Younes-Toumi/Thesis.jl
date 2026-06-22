@@ -23,15 +23,23 @@ function build_kl_sampler(gp, W::Matrix{Float64}, X_train::Matrix{Float64};
     idx    = sortperm(λ_post, rev=true)
     λ_post, V_post = λ_post[idx], V_post[:, idx]
 
-    # Drop modes below numerical floor to avoid 1/√λ blowup
-    floor  = max(1e-10 * sum(λ_post), 1e-14)
-    keep   = λ_post .> floor
-    V_r, λ_r = V_post[:, keep], λ_post[keep]
-    r = sum(keep)
+   # ── Energy-based truncation — this is what energy_threshold was always for ──
+    total_energy      = sum(λ_post)
+    cumulative_energy = cumsum(λ_post) ./ total_energy
+    r_energy = searchsortedfirst(cumulative_energy, energy_threshold)
 
-    # print("KL: N0 = $N0,  r = $r modes\n")
+    # Numerical floor as a secondary guard
+    floor   = max(1e-10 * total_energy, 1e-14)
+    r_floor = something(findlast(λ_post .> floor), r_energy)
 
-    # ── FIX 2: Form 2 coefficient — gives Var[h(w)] ≈ k_post(w,w) ────────────
+    r    = min(r_energy, r_floor)
+    V_r  = V_post[:, 1:r]
+    λ_r  = λ_post[1:r]
+
+    # println("  EOLE (posterior): N0=$N0, r=$r active modes " *
+    #         "($(round(100*cumulative_energy[r], digits=1))% energy captured)")
+
+    # ── Form 2 coefficient — gives Var[h(w)] ≈ k_post(w,w) ────────────
     Ξ         = randn(r, N_samples)
     coeff_mat = V_r * (Ξ ./ reshape(sqrt.(λ_r), :, 1))  # N0 × N_samples
 

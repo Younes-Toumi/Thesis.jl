@@ -39,8 +39,8 @@ using Printf
 
 # parametric inputs
 # lb, ub = -1.5429, 1.5429
-x1 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x1)
-x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x2)
+x1 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.0, 1.0), :σ => 1.0)), :x1)
+x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.0, 1.0), :σ => 1.0)), :x2)
 
 # interval inputs
 # x1 = IntervalVariable(-1.5, 1.5, :x1)
@@ -55,10 +55,15 @@ specs = InputSpec.([x1, x2])     # broadcasts dispatch over each UQ.jl input
  
 w_names, u_names, v_names = spec_names(specs)
 
-physical_model = g_function
+
+Φ(z)     = cdf(Normal(), z)
 
 
-n_train, n_test = 40, 1001
+physical_model = (x1, x2) -> x1 - x2 - -2.0
+analytical_pf = (μ1, μ2) -> Φ(-(μ1 - μ2 - -2.0) / sqrt(1^2 + 1^2))
+
+
+n_train, n_test = 50, 1001
 
 
 data_aug_train, data_phys_train =    build_augmented_design(physical_model, specs, n_train)
@@ -75,8 +80,8 @@ metamodel = GaussianProcess(data_aug_train, :y, kernel_type=kernel())
 println("MSE: $(round(mse(data_aug_test.y, μ_test), digits=5))")
 println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
 
-Ng = 100
-Nx = 100
+Ng = 1000
+Nx = 1000
 
 print("Params: Ng = $Ng, Nx = $Nx\n")
 
@@ -85,7 +90,7 @@ cabo_min = @time "cabo min loop" cabo_loop(
     metamodel,
     data_aug_train,
     specs;
-    Ng = Ng, Nx = Nx, qoi_type = :mean,
+    Ng = Ng, Nx = Nx, qoi_type = :pf,
     max_iter = 20, direction = :min,
     tol_BO = 1e-3, tol_BC = 1e-2
 )
@@ -96,7 +101,7 @@ cabo_max = @time "cabo max loop" cabo_loop(
     metamodel,
     cabo_min.data,
     specs;
-    Ng = Ng, Nx = Nx, qoi_type = :mean,
+    Ng = Ng, Nx = Nx, qoi_type = :pf,
     max_iter = 20, direction = :max,
     tol_BO = 1e-3, tol_BC = 1e-2
 )
@@ -112,17 +117,17 @@ using Plots, Statistics
 n_μ1 = 500
 n_μ2 = 500
 
-μ1_grid = range(-1.5, 1.5, length=n_μ1)
-μ2_grid  = range(-1.5, 1.5, length=n_μ2)
+μ1_grid = range(-1.0, 1.0, length=n_μ1)
+μ2_grid  = range(-1.0, 1.0, length=n_μ2)
 
-MeanSurface = zeros(n_μ1, n_μ2)
+PfSurface = zeros(n_μ1, n_μ2)
 
 # ============================================================
 # Compute response
 # ============================================================
 for (i, μ1_v) in enumerate(μ1_grid)
     for (j, μ2_v) in enumerate(μ2_grid)
-        MeanSurface[j, i]  = g_function_E(μ1_v, μ2_v)
+        PfSurface[j, i]  = analytical_pf(μ1_v, μ2_v)
     end
 end
 
@@ -132,14 +137,14 @@ end
 plt = heatmap(
     μ1_grid,
     μ2_grid,
-    MeanSurface,
+    PfSurface,
     xlabel="μ1",
     ylabel="μ2",
     c=:thermal,
-    title="expected response function: E[g(x1, x2)]",
+    title="expected Pf function: Pf(μ1, μ2)]",
     colorbar=true,
-    xlims = (-1.6, 1.6),
-    ylims = (-1.6, 1.6),
+    xlims = (-1.1, 1.1),
+    ylims = (-1.1, 1.1),
     legend = :outerbottom,
     legendcolumns=4,
 )
@@ -181,11 +186,11 @@ scatter!(plt,
 )
 
 # ── mark true min and max in epistemic space ──────────────────────────────────
-min_idx = argmin(MeanSurface)
-max_idx = argmax(MeanSurface)
+min_idx = argmin(PfSurface)
+max_idx = argmax(PfSurface)
 
-x_min, y_min, z_min = μ1_grid[min_idx[2]], μ1_grid[min_idx[1]], minimum(MeanSurface)
-x_max, y_max, z_max = μ1_grid[max_idx[2]], μ1_grid[max_idx[1]], maximum(MeanSurface)
+x_min, y_min, z_min = μ1_grid[min_idx[2]], μ1_grid[min_idx[1]], minimum(PfSurface)
+x_max, y_max, z_max = μ1_grid[max_idx[2]], μ1_grid[max_idx[1]], maximum(PfSurface)
 
 dy = 0.2
 
@@ -254,16 +259,16 @@ history = plot(
 println("\n" * "="^60)
 println("CABO results")
 println("="^60)
-println("MIN  E[g] ≈ $(round(cabo_min.μ_bound, digits=3))" *
+println("MIN  Pf ≈ $(round(cabo_min.μ_bound, digits=5))" *
         "  at θ = $(round.(cabo_min.θ_bound, digits=3))")
-println("MAX  E[g] ≈ $(round(cabo_max.μ_bound, digits=3))" *
+println("MAX  Pf ≈ $(round(cabo_max.μ_bound, digits=5))" *
         "  at θ = $(round.(cabo_max.θ_bound, digits=3))")
 println("-"^60)
-println("Expected:  MIN ≈ $(round(z_min, digits=3)) at θ = [$(round(x_min, digits=3)), $(round(y_min, digits=3))]")
-println("           MAX ≈ $(round(z_max, digits=3)) at θ = [$(round(x_max, digits=3)), $(round(y_max, digits=3))]")
+println("Expected:  MIN ≈ $(round(z_min, digits=5)) at θ = [$(round(x_min, digits=3)), $(round(y_min, digits=3))]")
+println("           MAX ≈ $(round(z_max, digits=5)) at θ = [$(round(x_max, digits=3)), $(round(y_max, digits=3))]")
 println("-"^60)
-println("Difference:  MIN ≈ $(round(cabo_min.μ_bound - z_min, digits=3))")
-println("                     MAX ≈ $(round(cabo_max.μ_bound - z_max, digits=3))")
+println("Difference:  MIN ≈ $(round(cabo_min.μ_bound - z_min, digits=5))")
+println("                     MAX ≈ $(round(cabo_max.μ_bound - z_max, digits=5))")
 println("="^60)
 
 
