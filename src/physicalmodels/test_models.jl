@@ -1,3 +1,32 @@
+model_ishigami = Model(
+    df -> sin.(df.x1) .+ 7.0 .* sin.(df.x2).^2 .+ 0.1 .* (df.x3).^4 .* sin.(df.x1),
+    :y
+)
+
+model_forrester = Model(
+    df -> (6 .* df.x .- 2).^2 .* sin.(12 .* df.x .- 4),
+    :y
+)
+
+model_gfunction = Model(
+    df -> begin
+        α_g = [2.0 3.0 1.0 4.0; 3.0 2.0 4.0 1.0]
+        β_g = [-0.5 0.5 -0.5 0.5; -0.5 -0.5 0.5 0.5]
+        c_g = [1.0, -1.5, -1.5, 2.0]    
+
+        sum(
+            c_g[i] .* exp.(
+                .- α_g[1, i] .* (df.x1 .- β_g[1, i]).^2
+                .- α_g[2, i] .* (df.x2 .- β_g[2, i]).^2
+                )
+            for i in 1:4
+        )
+    end,
+    :y
+)
+
+
+
 function ishigami(
     x1::Float64, x2::Float64, x3::Float64;
     a::Float64 = 7.0,

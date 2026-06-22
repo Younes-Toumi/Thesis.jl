@@ -151,7 +151,8 @@ export
 include("physicalmodels/test_models.jl")
 
 export
-    ishigami, forrester, g_function, g_function_E
+    ishigami, forrester, g_function, g_function_E,
+    model_ishigami, model_forrester, model_gfunction
 
 # bootstrap
 include("metamodels/ensemble/bootstrap.jl")

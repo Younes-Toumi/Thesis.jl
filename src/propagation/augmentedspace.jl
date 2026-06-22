@@ -140,6 +140,12 @@ end
 function spec_names(specs::Vector{<:AbstractInputSpec})
     u_names = Symbol[]
     v_names = Symbol[]
+    x_names = Symbol[]
+
+    for (i, s) in enumerate(specs)
+        push!(x_names, Symbol("x$i"))
+    end
+
 
     for (i, s) in enumerate(specs)
         if n_u_dims(s) == 1
@@ -158,7 +164,7 @@ function spec_names(specs::Vector{<:AbstractInputSpec})
         end
     end
     w_names = vcat(u_names, v_names)
-    return w_names, u_names, v_names
+    return x_names, w_names, u_names, v_names
 end
 
 # ==============================================================================
@@ -204,7 +210,7 @@ function build_augmented_design(
         v_samples[:, j] = θ_to_v.(θ_samples[:, j], relaxed_lbs[j], relaxed_ubs[j])
     end
 
-    w_names, u_names, v_names = spec_names(specs)
+    x_names, w_names, u_names, v_names = spec_names(specs)
     u_samples = Matrix{Float64}(undef, n_samples, length(u_names))
     x_samples = Matrix{Float64}(undef, n_samples, length(specs))
 
@@ -241,9 +247,12 @@ function build_augmented_design(
     for (i, s) in enumerate(specs);    phys_df[!, s.name] = x_samples[:, i]; end
 
     if physical_model !== nothing
-        y = [physical_model(x_samples[row, :]...) for row in 1:n_samples]
-        aug_df[!, y_symbol]  = y
-        phys_df[!, y_symbol] = y
+        UncertaintyQuantification.evaluate!(physical_model, phys_df)
+        aug_df[!, y_symbol] = phys_df[!, y_symbol]
+
+        # y = [physical_model(x_samples[row, :]...) for row in 1:n_samples]
+        # aug_df[!, y_symbol]  = y
+        # phys_df[!, y_symbol] = y
     end
 
     return aug_df, phys_df
@@ -253,7 +262,7 @@ end
 # 9.  augmented_to_physical / augmented_to_epistemic — generalized
 # ==============================================================================
 function augmented_to_physical(w, specs::Vector{<:AbstractInputSpec})
-    w_names, u_names, v_names = spec_names(specs)
+    x_names, w_names, u_names, v_names = spec_names(specs)
     n_u, n_v = length(u_names), length(v_names)
     u_vec, v_vec = w[1:n_u], w[n_u+1 : n_u+n_v]
 

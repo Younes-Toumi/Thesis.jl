@@ -453,3 +453,87 @@ display(history)
 # Difference:  MIN ≈ -0.003
 #                      MAX ≈ 0.06
 # ============================================================
+
+
+
+
+
+
+
+
+# fit!: 5.249496 seconds (18.07 M allocations: 1.250 GiB, 4.30% gc time, 42.46% compilation time: <1% of which was recompilation)
+# predict:: 0.000802 seconds (158 allocations: 1.836 MiB)
+# MSE: 0.01586
+# Q²:  0.99425
+# Params: Ng = 1000, Nx = 1000
+
+# ━━━ CABO Iteration 1 / 20 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#     Incumbent θ* = [0.555, -0.926]    μ_qoi(θ*) ≈ 1.23e-02    σ_qoi(θ*) ≈ 4.75e-04
+# bo objective : 7.914175 seconds (61.20 k allocations: 10.900 GiB, 33.04% gc time)
+#     Acquisition θ⁺ = [1.0, -1.0]    EI = 0.0081    COV = 0.0385
+# u objective : 0.058977 seconds (1.05 M allocations: 92.079 MiB, 34.21% gc time, 6.77% compilation time)
+
+# ━━━ CABO Iteration 2 / 20 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#     Incumbent θ* = [1.0, -1.0]    μ_qoi(θ*) ≈ 2.01e-03    σ_qoi(θ*) ≈ 1.13e-04
+# bo objective : 0.940057 seconds (9.00 k allocations: 1.819 GiB, 3.91% gc time)
+#     Acquisition θ⁺ = [-0.9234, 0.8566]    EI = 0.0    COV = 0.0563
+# u objective : 0.035418 seconds (1.05 M allocations: 95.400 MiB)
+
+# ━━━ CABO Iteration 3 / 20 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#     Incumbent θ* = [1.0, -1.0]    μ_qoi(θ*) ≈ 2.01e-03    σ_qoi(θ*) ≈ 1.09e-04
+# bo objective : 11.471720 seconds (91.80 k allocations: 16.391 GiB, 30.53% gc time)
+#     Acquisition θ⁺ = [1.0, -1.0]    EI = 0.0    COV = 0.05415
+# u objective : 0.045812 seconds (1.05 M allocations: 95.400 MiB, 24.78% gc time)
+
+# ━━━ CABO Iteration 4 / 20 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#     Incumbent θ* = [1.0, -1.0]    μ_qoi(θ*) ≈ 2.25e-03    σ_qoi(θ*) ≈ 4.33e-04
+# bo objective : 0.935866 seconds (9.00 k allocations: 1.823 GiB, 7.09% gc time)
+#     Acquisition θ⁺ = [0.9884, 0.7313]    EI = 0.0    COV = 0.1925
+# u objective : 0.049421 seconds (1.05 M allocations: 95.400 MiB, 24.74% gc time)
+
+# ━━━ CABO Iteration 5 / 20 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#     Incumbent θ* = [1.0, -1.0]    μ_qoi(θ*) ≈ 2.04e-03    σ_qoi(θ*) ≈ 1.84e-04
+# bo objective : 0.949946 seconds (9.00 k allocations: 1.826 GiB, 8.32% gc time)
+#     Acquisition θ⁺ = [0.9551, -0.3102]    EI = 0.0    COV = 0.09035
+# u objective : 0.045340 seconds (1.05 M allocations: 98.147 MiB, 22.11% gc time)
+
+# ━━━ CABO Iteration 6 / 20 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#     Incumbent θ* = [1.0, -1.0]    μ_qoi(θ*) ≈ 2.00e-03    σ_qoi(θ*) ≈ 1.30e-18
+# bo objective : 1.733548 seconds (9.00 k allocations: 1.828 GiB, 49.49% gc time)
+#     Acquisition θ⁺ = [-0.0752, 0.9805]    EI = 0.0    COV = 6.508e-16
+# u objective : 0.040126 seconds (1.05 M allocations: 98.147 MiB)
+
+# ✓ converged
+
+#   ► MIN bound ≈ 0.0021  at  θ = [1.0, -1.0]
+# cabo min loop: 37.890098 seconds (14.01 M allocations: 51.522 GiB, 33.18% gc time, 0.79% compilation time: <1% of which was recompilation)
+
+# ━━━ CABO Iteration 1 / 20 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#     Incumbent θ* = [-0.967, 1.008]    μ_qoi(θ*) ≈ 5.11e-01    σ_qoi(θ*) ≈ 2.84e-03
+# bo objective : 19.750068 seconds (133.20 k allocations: 23.938 GiB, 32.83% gc time)
+#     Acquisition θ⁺ = [-1.0, 1.0]    EI = 0.0097    COV = 0.005565
+# u objective : 0.049382 seconds (1.05 M allocations: 105.166 MiB, 22.33% gc time)
+
+# ━━━ CABO Iteration 2 / 20 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#     Incumbent θ* = [-1.0, 1.0]    μ_qoi(θ*) ≈ 5.30e-01    σ_qoi(θ*) ≈ 1.22e-03
+# bo objective : 1.318510 seconds (9.00 k allocations: 1.844 GiB, 8.79% gc time)
+#     Acquisition θ⁺ = [0.6405, -0.9871]    EI = 0.0    COV = 0.002306
+# u objective : 0.853374 seconds (1.05 M allocations: 105.166 MiB, 94.88% gc time)
+
+# ✓ converged
+
+#   ► MAX bound ≈ 0.5049  at  θ = [-1.0, 1.0]
+# cabo max loop: 28.933873 seconds (8.89 M allocations: 35.313 GiB, 32.43% gc time)
+
+# ============================================================
+# CABO results
+# ============================================================
+# MIN  Pf ≈ 0.0021  at θ = [1.0, -1.0]
+# MAX  Pf ≈ 0.5049  at θ = [-1.0, 1.0]
+# ------------------------------------------------------------
+# Expected:  MIN ≈ 0.00234 at θ = [1.0, -1.0]
+#            MAX ≈ 0.5 at θ = [-1.0, 1.0]
+# ------------------------------------------------------------
+# Difference:  MIN ≈ -0.00024
+#                      MAX ≈ 0.0049
+# ============================================================

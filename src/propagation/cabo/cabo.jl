@@ -73,6 +73,7 @@ function cabo_loop(
     physical_model,
     gp_init,
     data_aug_train,
+    y_symbol,
     specs;
     Ng = 100,
     Nx = 100,
@@ -83,7 +84,7 @@ function cabo_loop(
     tol_BC::Float64 = 2.5e-2
 )
     # ── Everything dimension-dependent derives from `specs` ──────────────────
-    w_names, u_names, v_names  = spec_names(specs)
+    x_names, w_names, u_names, v_names  = spec_names(specs)
     bounds_u, bounds_v = build_bounds(specs)
  
     data = copy(data_aug_train)
@@ -167,8 +168,13 @@ function cabo_loop(
             u_plus = minimizer(res_u)
             w_plus = vcat(u_plus, v_plus)
             x_plus = augmented_to_physical(w_plus, specs)
-            y_plus = physical_model(x_plus...)
-    
+            row_plus = DataFrame(Dict(x_names .=> x_plus))
+
+            UncertaintyQuantification.evaluate!(physical_model, row_plus)
+            y_plus = row_plus[1, y_symbol]
+            # y_plus = physical_model(x_plus...)
+
+
             # Generalized row constructions
             new_row = merge(
                 NamedTuple(zip(u_names, u_plus)),
@@ -179,7 +185,12 @@ function cabo_loop(
         else
             w_plus = v_plus
             x_plus = augmented_to_physical(w_plus, specs)
-            y_plus = physical_model(x_plus...)
+            row_plus = DataFrame(Dict(x_names .=> x_plus))
+
+            UncertaintyQuantification.evaluate!(physical_model, row_plus)
+            y_plus = row_plus[1, y_symbol]
+
+            # y_plus = physical_model(x_plus...)
 
             # Generalized row constructions
             new_row = merge(
@@ -245,7 +256,10 @@ function cabo_loop(
             u_bound = minimizer(res_u)
             w_bound = vcat(u_bound, v_bound)
             x_bound = augmented_to_physical(w_bound, specs)
-            y_bound = physical_model(x_bound...)
+            row_bound = DataFrame(Dict(x_names .=> x_bound))
+
+            UncertaintyQuantification.evaluate!(physical_model, row_bound)
+            y_bound = row_bound[1, y_symbol]
 
             new_row = merge(
                 NamedTuple(zip(u_names, u_bound)),

@@ -1,30 +1,3 @@
-# ==============================================================================
-# augmented_space_v2.jl
-# Generalized augmented-space construction for CABO, supporting THREE input
-# categories, unified under UncertaintyQuantification.jl's type system:
-#
-#   1. PRECISE   — RandomVariable(dist, name)                       fully aleatory
-#   2. INTERVAL  — IntervalVariable(lb, ub, name)                    fully epistemic
-#   3. HYBRID    — RandomVariable(ProbabilityBox{D}(params), name)   mixed
-#
-# Each spec contributes 0 or 1 u-column (aleatory, SNS) and 0..K v-columns
-# (epistemic, SNS), where K = number of Interval-valued parameters for a
-# HYBRID spec (K=1 reproduces your old single-θ `dist_factory` convention;
-# K=0 degenerates to PRECISE automatically).
-#
-# ⚠ FIELD-NAME ASSUMPTIONS — VERIFY BEFORE RELYING ON THE UQ.jl DISPATCH BELOW
-#   RandomVariable    : fields  .dist, .name
-#   IntervalVariable  : fields  .lb, .ub, .name
-#   ProbabilityBox{D} : field   .parameters :: Dict{Symbol,Any}
-#   Interval          : fields  .lb, .ub
-#
-#   Run this first and adjust the methods marked # CHECK if any name differs:
-#     println(fieldnames(typeof(x1)))        # RandomVariable
-#     println(fieldnames(typeof(x2)))        # RandomVariable (wraps ProbabilityBox)
-#     println(fieldnames(typeof(x2.dist)))   # ProbabilityBox
-#     println(fieldnames(typeof(x3)))        # IntervalVariable
-# ==============================================================================
-
 using SurrogateModelling
 using SurrogateModelling: g_function
 using UncertaintyQuantification
@@ -38,31 +11,21 @@ using Printf
 # ==============================================================================
 
 # parametric inputs
-# lb, ub = -1.5429, 1.5429
 x1 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x1)
 x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x2)
 
-# interval inputs
-# x1 = IntervalVariable(-1.5, 1.5, :x1)
-# x2 = IntervalVariable(-1.5, 1.5, :x2)
-
-# x1 = RandomVariable(Normal(0.0, 1.0), :x1)
-# x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.3, 1.8), :σ => 2.0)), :x2)
-# x3 = IntervalVariable(-0.5, 1.3, :x3)
-
-
 specs = InputSpec.([x1, x2])     # broadcasts dispatch over each UQ.jl input
  
-w_names, u_names, v_names = spec_names(specs)
-
+x_names, w_names, u_names, v_names = spec_names(specs)
+y_symbol = model_gfunction.name
 physical_model = g_function
 
 
 n_train, n_test = 40, 1001
 
 
-data_aug_train, data_phys_train =    build_augmented_design(physical_model, specs, n_train)
-data_aug_test,  data_phys_test  =    build_augmented_design(physical_model, specs, n_test)
+data_aug_train, data_phys_train =    build_augmented_design(model_gfunction, specs, n_train)
+data_aug_test,  data_phys_test  =    build_augmented_design(model_gfunction, specs, n_test)
 
 
 # # initialize GP on θ-space
@@ -75,15 +38,16 @@ metamodel = GaussianProcess(data_aug_train, :y, kernel_type=kernel())
 println("MSE: $(round(mse(data_aug_test.y, μ_test), digits=5))")
 println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
 
-Ng = 100
-Nx = 100
+Ng = 10
+Nx = 10
 
 print("Params: Ng = $Ng, Nx = $Nx\n")
 
 cabo_min = @time "cabo min loop" cabo_loop(
-    physical_model,        # physical_model — explicit, no longer a global lookup
+    model_gfunction,        # physical_model — explicit, no longer a global lookup
     metamodel,
     data_aug_train,
+    y_symbol,
     specs;
     Ng = Ng, Nx = Nx, qoi_type = :mean,
     max_iter = 20, direction = :min,
@@ -92,9 +56,10 @@ cabo_min = @time "cabo min loop" cabo_loop(
 
 
 cabo_max = @time "cabo max loop" cabo_loop(
-    physical_model,        # physical_model — explicit, no longer a global lookup
+    model_gfunction,        # physical_model — explicit, no longer a global lookup
     metamodel,
     cabo_min.data,
+    y_symbol,
     specs;
     Ng = Ng, Nx = Nx, qoi_type = :mean,
     max_iter = 20, direction = :max,
@@ -136,7 +101,7 @@ plt = heatmap(
     xlabel="μ1",
     ylabel="μ2",
     c=:thermal,
-    title="expected response function: E[g(x1, x2)]",
+    title="expected response function: E[g(x1, x2)] = Μ(μ1, μ2)",
     colorbar=true,
     xlims = (-1.6, 1.6),
     ylims = (-1.6, 1.6),
