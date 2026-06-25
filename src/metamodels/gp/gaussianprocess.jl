@@ -212,13 +212,17 @@ function fit!(gp::GaussianProcess)
     # Run from default θ0 + n_restarts-1 random perturbations
     flat_θ0, _ = value_flatten(gp.θ)
 
-    n_restarts = 5
+    n_restarts = 7
+
     results = map(1:n_restarts) do i
-        θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.5 .* randn(length(flat_θ0))
+        spread = 0.2 * (i - 1)
+        θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ spread .* randn(length(flat_θ0))
+
         try
             run_optimization(θ_start)
-        catch
-            nothing  # skip failed starts (e.g. Cholesky errors)
+        catch e
+            @warn "Optimization failed at restart $i..."
+            nothing
         end
     end
 
@@ -311,13 +315,17 @@ function refit!(gp::GaussianProcess, X_new::AbstractMatrix{Float64}, y_new::Abst
     end
 
     # Run from default θ0 + n_restarts-1 random perturbations
-    n_restarts = 2
+    n_restarts = 3
+
     results = map(1:n_restarts) do i
-        θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ 0.2 .* randn(length(flat_θ0))
+        spread = 0.5 * (i - 1)
+        θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ spread .* randn(length(flat_θ0))
+
         try
             run_optimization(θ_start)
-        catch
-            nothing  # skip failed starts (e.g. Cholesky errors)
+        catch e
+            @warn "Optimization failed at restart $i..."
+            nothing
         end
     end
 

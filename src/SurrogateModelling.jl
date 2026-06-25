@@ -128,7 +128,7 @@ export
 include("metrics/metrics.jl")
 
 export 
-    mse, rmse, nrmse, q2
+    mse, rmse, nrmse, q2, q2_loo, q2_loo_gp_fast
 
 # 4. CABO ────────────────────────────────────────────────────────────────────────── #
 
@@ -161,6 +161,13 @@ export
     BootstrapEnsemble, fit!, predict, evalaute!,
     gp_bootstrap, pce_bootstrap,
     calibration_coverage, calibration_report
+
+
+include("sampling/adaptive.jl")
+
+export
+    select_alc, adaptive_sampling
+
 
 end
 

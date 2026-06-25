@@ -4,7 +4,7 @@ model_ishigami = Model(
 )
 
 model_forrester = Model(
-    df -> (6 .* df.x .- 2).^2 .* sin.(12 .* df.x .- 4),
+    df -> (6 .* df.x1 .- 2).^2 .* sin.(12 .* df.x1 .- 4),
     :y
 )
 

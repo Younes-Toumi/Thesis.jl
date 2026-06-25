@@ -203,6 +203,7 @@ function build_augmented_design(
     # Random.seed!(seed)
     θ_samples = n_epi_total > 0 ?
         QuasiMonteCarlo.sample(n_samples, relaxed_lbs, relaxed_ubs, LatinHypercubeSample())' :
+        # QuasiMonteCarlo.sample(n_samples, relaxed_lbs, relaxed_ubs, SobolSample())' :
         Matrix{Float64}(undef, n_samples, 0)
 
     v_samples = similar(θ_samples)

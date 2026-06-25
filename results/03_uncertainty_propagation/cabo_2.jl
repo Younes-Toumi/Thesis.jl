@@ -98,10 +98,10 @@ plt = heatmap(
     μ1_grid,
     μ2_grid,
     MeanSurface,
-    xlabel="μ1",
-    ylabel="μ2",
+    xlabel="θ₁",
+    ylabel="θ₂",
     c=:thermal,
-    title="expected response function: E[g(x1, x2)] = Μ(μ1, μ2)",
+    title="Expected conditioned response E[g | θ₁, θ₂] = Μ(θ₁, θ₂)",
     colorbar=true,
     xlims = (-1.6, 1.6),
     ylims = (-1.6, 1.6),
@@ -115,35 +115,35 @@ for i in 1:n_train
     data_aug_train_epi[i, :] = augmented_to_epistemic(data_aug_train[i, v_names], specs)
 end
 
-scatter!(plt,
-    data_aug_train_epi[:, 1], data_aug_train_epi[:, 2];
-    marker = :diamond, color = :cyan, ms = 5,
-    label  = "init samples", markerstrokewidth=0,
-)
+# scatter!(plt,
+#     data_aug_train_epi[:, 1], data_aug_train_epi[:, 2];
+#     marker = :diamond, color = :cyan, ms = 5,
+#     label  = "init samples", markerstrokewidth=0,
+# )
 
-scatter!(plt,
-    Θs_min[:, 1], Θs_min[:, 2];
-    marker = :cross, color = :green, ms = 5,
-    label  = "added min", markerstrokewidth=2,
-)
+# scatter!(plt,
+#     Θs_min[:, 1], Θs_min[:, 2];
+#     marker = :cross, color = :green, ms = 5,
+#     label  = "added min", markerstrokewidth=2,
+# )
 
-scatter!(plt,
-    Θs_max[:, 1], Θs_max[:, 2];
-    marker = :cross, color = :red, ms = 5,
-    label  = "added max", markerstrokewidth=2,
-)
+# scatter!(plt,
+#     Θs_max[:, 1], Θs_max[:, 2];
+#     marker = :cross, color = :red, ms = 5,
+#     label  = "added max", markerstrokewidth=2,
+# )
 
-scatter!(plt,
-    [cabo_min.θ_bound[1]], [cabo_min.θ_bound[2]];
-    marker = :star, color = :green, ms = 7,
-    label  = "cabo min", markerstrokewidth=1,
-)
+# scatter!(plt,
+#     [cabo_min.θ_bound[1]], [cabo_min.θ_bound[2]];
+#     marker = :star, color = :green, ms = 7,
+#     label  = "cabo min", markerstrokewidth=1,
+# )
 
-scatter!(plt,
-    [cabo_max.θ_bound[1]], [cabo_max.θ_bound[2]];
-    marker = :star, color = :red, ms = 7,
-    label  = "cabo max", markerstrokewidth=1,
-)
+# scatter!(plt,
+#     [cabo_max.θ_bound[1]], [cabo_max.θ_bound[2]];
+#     marker = :star, color = :red, ms = 7,
+#     label  = "cabo max", markerstrokewidth=1,
+# )
 
 # ── mark true min and max in epistemic space ──────────────────────────────────
 min_idx = argmin(MeanSurface)
@@ -152,7 +152,7 @@ max_idx = argmax(MeanSurface)
 x_min, y_min, z_min = μ1_grid[min_idx[2]], μ1_grid[min_idx[1]], minimum(MeanSurface)
 x_max, y_max, z_max = μ1_grid[max_idx[2]], μ1_grid[max_idx[1]], maximum(MeanSurface)
 
-dy = 0.2
+dy = 0.3
 
 scatter!(plt,
     [μ1_grid[min_idx[2]]], [μ2_grid[min_idx[1]]];
