@@ -6,18 +6,25 @@ using ParameterHandling
 using LinearAlgebra
 using KernelFunctions
 
-function compare_kernels_averaged(
+function compare_pce_variants_averaged(
     physical_model, 
     specs;
     n_train=50,
     n_runs=15
 )
 
-    kernel_array = [GPSquaredExponential, GPMatern12, GPMatern32, GPMatern52]
-    kernel_names = ["SE", "Matérn-1/2", "Matérn-3/2", "Matérn-5/2"]
+    _, w_names, _, _ = spec_names(specs)
+    
 
-    Q2    = zeros(n_runs, length(kernel_array))
-    times = zeros(n_runs, length(kernel_array))
+    bases = fill(SurrogateModelling.HermiteBasis(), length(w_names))
+    degrees = [TotalDegree(5), TotalDegree(5), QBall(5, 0.5), QBall(5, 0.5)]
+    solvers = [SurrogateModelling.OLSSolver, SurrogateModelling.OLSSolver, SurrogateModelling.LASSOSolver, SurrogateModelling.LASSOSolver]
+
+    variant_names = ["OLS (TD)", "OLS (QB)", "LASSO (TD)", "LASSO (QB)"]
+
+    Q2          = zeros(n_runs, length(variant_names))
+    times       = zeros(n_runs, length(variant_names))
+    n_coeffs    = zeros(n_runs, length(variant_names))
 
     y_symbol = physical_model.name
 
@@ -27,21 +34,20 @@ function compare_kernels_averaged(
         # Random.seed!(1000 + r)   # different design each run, but reproducible overall
         data_aug_train, _ = build_augmented_design(physical_model, specs, n_train)
 
-        for (k, kernel) in enumerate(kernel_array)   # SAME data, all kernels — paired
-            gp = GaussianProcess(data_aug_train, y_symbol; kernel_type=kernel())
-            fit_result = @timed fit!(gp)
+        for i in eachindex(variant_names)
+            pce = SurrogateModelling.PolynomialChaosExpansion(data_aug_train, y_symbol, bases, degrees[i]; solver=solvers[i]())
+            fit_result = @timed fit!(pce)
 
-            # Q2[r, k] = q2_loo(df -> GaussianProcess(df, y_symbol; kernel_type=gp.kernel_type), data_aug_train, y_symbol)
-            Q2[r, k] = q2_loo_gp_fast(gp)
-
-            times[r, k] = fit_result.time
+            Q2[r, i] = q2_loo(df -> SurrogateModelling.PolynomialChaosExpansion(df, y_symbol, bases, degrees[i]; solver=solvers[i]()), data_aug_train, y_symbol)
+            times[r, i] = fit_result.time
+            n_coeffs[r, i] = length(pce.coeffs)
 
         end
     end
 
-    println(rpad("Kernel", 12), rpad("Q² mean", 12), rpad("Q² std", 12), rpad("Q² min", 12), rpad("Q² max", 12), rpad("Q² neg", 12))
-    for (k, name) in enumerate(kernel_names)
-        col = Q2[:, k]
+    println(rpad("Variant", 12), rpad("Q² mean", 12), rpad("Q² std", 12), rpad("Q² min", 12), rpad("Q² max", 12), rpad("Q² neg", 12))
+    for (i, name) in enumerate(variant_names)
+        col = Q2[:, i]
         println(rpad(name, 12),
                 rpad(round(mean(col),       digits=4), 12),
                 rpad(round(std(col),        digits=4), 12),
@@ -52,9 +58,9 @@ function compare_kernels_averaged(
     end
 
     print("\n")
-    println(rpad("Kernel", 12), rpad("t mean", 12), rpad("t std", 12), rpad("t min", 12), rpad("t max", 12))
-    for (k, name) in enumerate(kernel_names)
-        col = times[:, k]
+    println(rpad("Variants", 12), rpad("t mean", 12), rpad("t std", 12), rpad("t min", 12), rpad("t max", 12))
+    for (i, name) in enumerate(variant_names)
+        col = times[:, i]
         println(rpad(name, 12),
                 rpad(round(mean(col),       digits=4), 12),
                 rpad(round(std(col),        digits=4), 12),
@@ -64,13 +70,22 @@ function compare_kernels_averaged(
         )
     end
 
+    print("\n")
+    println(rpad("Variants", 12), rpad("n_coeffs", 12))
+    for (i, name) in enumerate(variant_names)
+        col = n_coeffs[:, i]
+        println(rpad(name, 12),
+                rpad(round(mean(col),       digits=2), 12)
+        )
+    end
+
     print("\nLatex Array\n")
 
-    kernel_names_latex = ["SE", "Matérn-\$1/2\$", "Matérn-\$3/2\$", "Matérn-\$5/2\$"]
+    variant_names_latex = ["OLS (TD)", "OLS (QB)", "Sparse-LASSO (TD)", "Sparse-LASSO (QB)"]
 
 
     println(
-        rpad("Kernel", 12), rpad(" & ", 3), 
+        rpad("Variant", 12), rpad(" & ", 3), 
         rpad("Q² mean", 3), rpad(" & ", 3),
         rpad("Q² min", 3),  rpad(" & ", 3),
         rpad("Q² max", 3),  rpad(" & ", 3),
@@ -83,10 +98,13 @@ function compare_kernels_averaged(
         )
 
 
-    for k in eachindex(kernel_names_latex)
-        col_q2 = Q2[:, k]
-        col_time = times[:, k]
-        col_name = kernel_names_latex[k]
+    for i in eachindex(variant_names_latex)
+        col_q2 = Q2[:, i]
+        col_time = times[:, i]
+        col_coeff = n_coeffs[:, i]
+
+        col_name = variant_names_latex[i]
+
 
         println(rpad(col_name, 12),                             rpad(" & ", 3),
                 rpad(round(mean(col_q2),        digits=2), 3),  rpad(" & ", 3),
@@ -96,15 +114,18 @@ function compare_kernels_averaged(
                 rpad(round(mean(col_time),      digits=2), 3),  rpad(" & ", 3),
                 rpad(round(minimum(col_time),   digits=2), 3),  rpad(" & ", 3),
                 rpad(round(maximum(col_time),   digits=2), 3),  rpad(" & ", 3),
-                rpad(round(std(col_time),       digits=2), 3),  rpad(" \\\\", 3),
+                rpad(round(std(col_time),       digits=2), 3),  rpad(" & ", 3),
+                rpad(round(mean(col_coeff),       digits=2), 3),  rpad(" \\\\", 3),
+
         )
     end
 
     return Q2, times
 end
 
-n_train = 10
-n_runs = 20
+n_train = 5
+n_runs = 2
+
 # ============================================================
 # 1. Four Gaussian Mixture Function g(x1, x2)
 # ============================================================
@@ -117,7 +138,7 @@ print("# ============================================================\n")
 print("# 1. Four Gaussian Mixture Function g(x1, x2) n₀ = $n_train\n")
 print("# ============================================================\n\n")
 
-Q2_g, times_g = compare_kernels_averaged(
+Q2_g, times_g = compare_pce_variants_averaged(
     model_gfunction, 
     specs_g;
     n_train=n_train,
@@ -139,7 +160,7 @@ print("\n# ============================================================\n")
 print("# 2. Ishigami Function f(x1, x2, x3) with n₀ = $n_train\n")
 print("# ============================================================\n\n")
 
-Q2_f, times_f = compare_kernels_averaged(
+Q2_f, times_f = compare_pce_variants_averaged(
     model_gfunction, 
     specs_f;
     n_train=n_train,
@@ -151,26 +172,25 @@ print("\ndone...\n")
 using StatsPlots
 
 function plot_results(qoi, n_train, type, func_name)
-    kernel_names = ["SqExp", "Matern12", "Matern32", "Matern52"]
+
+    variant_names = ["OLS (TD)", "OLS (QB)", "LASSO (TD)", "LASSO (QB)"]
     n_runs, n_k = size(qoi)
     # repeat each kernel name down its column, stack all columns into one long vector
-    groups = repeat(kernel_names, inner=n_runs)
+
+    groups = repeat(variant_names, inner=n_runs)
 
     values = vec(qoi)                       # column-major: all SqExp, then all Matern12, ...
+
     if type == :q2
         title = "Q² LOO - $func_name,  n₀=$n_train"
         p = boxplot(groups, values;
-            xlabel = "",    
             ylabel = "Q² (LOO)",
-            # ylims = (-1, 1),
             title  = title, legend = false)
     end
     if type == :time
         title = "t [s] - $func_name, n₀=$n_train"
         p = boxplot(groups, values;
-            xlabel = "",        
             ylabel = "t [s]",
-            # ylims = (0, 4),
             title  = title, legend = false)
     end
 

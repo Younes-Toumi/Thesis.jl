@@ -61,7 +61,6 @@ function q2_loo(build_model, data::DataFrame, y_symbol::Symbol)
 end
 
 
-
 """
     q2_loo_gp_fast(gp) -> Float64
 

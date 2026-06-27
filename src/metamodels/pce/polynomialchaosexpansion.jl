@@ -48,11 +48,9 @@ function fit!(pce::PolynomialChaosExpansion)
     return pce
 end
 
-function predict(pce::PolynomialChaosExpansion, Xnew::DataFrame)
+function predict(pce::PolynomialChaosExpansion, Xnew::Matrix{Float64}; mode=:mean)
 
-    Xmat = Matrix(Xnew[:, pce.x_names])
-
-    A_pred = build_design_matrix(pce.bases, pce.indices, Xmat)
+    A_pred = build_design_matrix(pce.bases, pce.indices, Xnew)
 
     return A_pred * pce.coeffs
 end
