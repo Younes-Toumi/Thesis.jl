@@ -6,6 +6,7 @@ authors = ["Younes Abdeldjalil Toumi <younes.abdeldjalil.toumi@stud.uni-hannover
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 AbstractGPs = "99985d1d-32ba-4be9-9821-2ec096f28918"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Clustering = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DifferentiationInterface = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
@@ -33,6 +34,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 [compat]
 ADTypes = "1.22.0"
 AbstractGPs = "0.5.24"
+BenchmarkTools = "1.8.0"
 Clustering = "0.15.8"
 DataFrames = "1.8.2"
 DifferentiationInterface = "0.7.16"

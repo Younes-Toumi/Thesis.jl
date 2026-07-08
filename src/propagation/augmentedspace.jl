@@ -106,8 +106,10 @@ function InputSpec(pb::ProbabilityBox{D}, name::Symbol; v_L=-2.2, v_U=2.2) where
     fixed_params = Dict{Symbol,Float64}()
     θ_L, θ_U     = Float64[], Float64[]
 
-    for (k, val) in pb.parameters                       # CHECK: field `.parameters`
-        if val isa Interval                               # CHECK: type `Interval`, fields below
+    # TODO: when there is just one input it should be named x1, if its named x it will raise and error.
+
+    for (k, val) in pb.parameters
+        if val isa Interval                               
             push!(epi_names, k)
             push!(θ_L, Float64(val.lb)); push!(θ_U, Float64(val.ub))   # CHECK: `.lb`, `.ub`
         else

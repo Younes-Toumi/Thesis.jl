@@ -20,9 +20,11 @@ function soft_threshold(z::Float64, λ::Float64)::Float64
     return sign(z) * max(abs(z) - λ, 0)
 end
 
-function lambda_grid(A_n::Matrix, y::Vector; n_lambdas::Int=100, eps::Float64=1e-6)
+function lambda_grid(A_n::Matrix, y::Vector; n_lambdas::Int=500, eps::Float64=1e-8)
+    
     λ_max = maximum(abs.(A_n' * y))
     λ_min = λ_max * eps
+    
     return exp.(range(log(λ_max), log(λ_min), length=n_lambdas))
 end
 
@@ -40,16 +42,17 @@ function coordinate_descent(
     for _ in 1:max_steps
         c_old = copy(c)
         for j in 1:P
-            r .+= A_n[:, j] .* c[j]
-            c[j] = soft_threshold(dot(A_n[:, j], r), λ)
-            r .-= A_n[:, j] .* c[j]
+            aj = @view A_n[:, j]
+            r .+= aj .* c[j]
+            ρ = dot(aj, r)
+            c[j] = j == 1 ? ρ / dot(aj, aj) : soft_threshold(ρ, λ)
+            r .-= aj .* c[j]
         end
         maximum(abs.(c - c_old)) < tol && break
     end
 
     return c
 end
-
 
 function solve_path(A_n::Matrix, y::Vector, lambdas::Vector{Float64};
                     tol::Float64=1e-8, max_steps::Int=500)
@@ -72,29 +75,23 @@ end
 function loo_error(A_n::Matrix, y::Vector, c::Vector; tol::Float64=1e-8)
     N = length(y)
     active = findall(abs.(c) .> tol)
-
-    # null model — no active terms
-    if isempty(active)
-        return 1.0  # normalized error = 1 (predicts mean, explains nothing)
-    end
+    isempty(active) && return 1.0
 
     A_active = A_n[:, active]
 
-    # leverage scores via QR: H = QQ', so H_ii = ||Q[i,:]||²
+    # Re-fit OLS on the active set so the analytical LOO formula is EXACT.
+    # (LASSO selects the support; OLS estimates the coefficients on it.)
+    c_ols = A_active \ y                      # least-squares on selected columns
+
     Q = Matrix(qr(A_active).Q)
-    h = vec(sum(Q .^ 2, dims=2))   # N-vector of H_ii
+    h = vec(sum(Q .^ 2, dims=2))
+    r = y .- A_active * c_ols                 # OLS residual — matches the leverage formula
 
-    # residuals
-    r = y .- A_active * c[active]
-
-    # guard against h_ii → 1 (perfectly interpolating points)
     denom = 1.0 .- h
     denom[denom .< tol] .= tol
-
     loo_res = r ./ denom
-    return mean(loo_res .^ 2) / var(y)   # normalized LOO error
+    return mean(loo_res .^ 2) / var(y)
 end
-
 
 function solve(solver::LASSOSolver, A::Matrix, y::Vector)
     
@@ -125,8 +122,9 @@ function solve(solver::LASSOSolver, A::Matrix, y::Vector)
 
     # 4. extract best coefficients, clean up near-zeros, denormalize
     c_best = coef_path[:, best_i]
-    c_best[abs.(c_best) .< solver.tol] .= 0.0
 
+    c_best[abs.(c_best) .< solver.tol] .= 0.0
+    
     solver.λ = lambdas[best_i] 
     return c_best ./ col_norms
 end

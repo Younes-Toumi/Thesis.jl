@@ -51,7 +51,6 @@ end
 function predict(pce::PolynomialChaosExpansion, Xnew::Matrix{Float64}; mode=:mean)
 
     A_pred = build_design_matrix(pce.bases, pce.indices, Xnew)
-
     return A_pred * pce.coeffs
 end
 
@@ -62,7 +61,7 @@ function evaluate!(
 )
     pce.coeffs === nothing && error("Call fit!(pce) first.")
 
-    y_pred = predict(pce, data)
+    y_pred = predict(pce, Matrix(data))
 
     data[!, pce.y_symbol] = y_pred
 

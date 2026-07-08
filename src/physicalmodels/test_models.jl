@@ -26,6 +26,11 @@ model_gfunction = Model(
 )
 
 
+model_simple = Model(
+    df -> df.x1.^2 .- df.x2.^2,
+    :y
+)
+
 
 function ishigami(
     x1::Float64, x2::Float64, x3::Float64;

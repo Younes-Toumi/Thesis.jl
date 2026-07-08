@@ -45,7 +45,7 @@ include("metamodels/gp/kernels/Composite.jl")
 
 export
     AbstractGPKernel, GPMatern52, GPMatern32, GPMatern12, GPSquaredExponential, GPCompositeKernel,
-    kernel_name
+    kernel_name, default_ard_θ, min_pairwise_distance, max_pairwise_distance
 
 # Mean Related
 include("metamodels/gp/means/means.jl")
@@ -107,6 +107,13 @@ export
     PolynomialChaosExpansion,
     fit!, predict
 
+# 1.3 Polynomial Chaos Kriging
+include("metamodels/pck/polynomialchaoskriging.jl")
+
+
+export 
+    PolynomialChaosKriging, model_name,
+    fit!, refit!, predict
 
 # 2. Scalings ────────────────────────────────────────────────────────────────────────── #
 
@@ -119,7 +126,7 @@ include("scalings/scaling_pipeline.jl")
 
 export 
     MinMaxScaler, ZScoreScaler, 
-    fit_pipeline, transform_input, transform_output, transform
+    fit_pipeline, transform_input, transform_output, transform,
     inverse_mean, inverse_variance
 
 
@@ -142,9 +149,9 @@ export
     ei_objective,
     precompute_h_pvc_terms, h_pvc, pvc_objective, u_objective,
     build_kl_sampler,
-    compute_relaxed_bounds, θ_to_v, v_to_θ, x_to_u, u_to_x, 
+    compute_relaxed_bounds, θ_to_v, v_to_θ, x_to_u, u_to_x, n_v_dims, n_u_dims,
     AbstractInputSpec, PreciseSpec, IntervalSpec, HybridSpec, InputSpec, spec_names, build_augmented_design, augmented_to_physical, augmented_to_epistemic, build_bounds,
-    estimate_qoi, estimate_propagation_qoi, best_candidate, make_pso, cabo_loop
+    estimate_qoi, estimate_propagation_qoi, best_candidate, make_pso, estimate_final_bound, cabo_loop
 
 
 # models 
@@ -152,7 +159,7 @@ include("physicalmodels/test_models.jl")
 
 export
     ishigami, forrester, g_function, g_function_E,
-    model_ishigami, model_forrester, model_gfunction
+    model_ishigami, model_forrester, model_gfunction, model_simple
 
 # bootstrap
 include("metamodels/ensemble/bootstrap.jl")

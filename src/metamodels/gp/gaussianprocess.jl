@@ -212,7 +212,7 @@ function fit!(gp::GaussianProcess)
     # Run from default θ0 + n_restarts-1 random perturbations
     flat_θ0, _ = value_flatten(gp.θ)
 
-    n_restarts = 7
+    n_restarts = 10
 
     results = map(1:n_restarts) do i
         spread = 0.2 * (i - 1)
@@ -318,7 +318,7 @@ function refit!(gp::GaussianProcess, X_new::AbstractMatrix{Float64}, y_new::Abst
     n_restarts = 3
 
     results = map(1:n_restarts) do i
-        spread = 0.5 * (i - 1)
+        spread = 0.2 * (i - 1)
         θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ spread .* randn(length(flat_θ0))
 
         try
@@ -337,9 +337,7 @@ function refit!(gp::GaussianProcess, X_new::AbstractMatrix{Float64}, y_new::Abst
 
     gp.flat_θ = best.minimizer    # ← store the UNCONSTRAINED optimum, not gp.θ
     gp.θ      = θ_opt
-    
-
-
+        
     # Build posterior with optimised hyperparameters
     kernel_opt = build_kernel(gp.kernel_type, θ_opt)
     f_opt      = GP(kernel_opt)
@@ -457,35 +455,34 @@ evaluate!(gp, df; mode=:sample, n_samples=50)      # adds :y_sample_1 … :y_sam
 """
 function evaluate!(
     gp       ::GaussianProcess,
-    data     ::DataFrame;
+    data     ::Union{DataFrame, DataFrameRow};
     mode     ::Symbol = :mean,
     n_samples::Int    = 1
 )
     gp.posterior === nothing && error("Call fit!(gp) before evaluate!.")
 
-    # ── prepare inputs ────────────────────────────────────────
-    Xmat = Matrix(data[:, gp.x_names])
-    Xvec = [Xmat[i, :] for i in 1:size(Xmat, 1)]
+    Xmat  = Matrix(data[:, gp.x_names])
+    Xrows = RowVecs(Xmat)                          # zero-copy, was vector-of-vectors
 
-    # ── project posterior onto test points ────────────────────
-    fp = gp.posterior(Xvec)
-
-    # ── column name helpers ───────────────────────────────────
-    col_mean   = Symbol(string(gp.y_symbol, "_mean"))
-    col_var    = Symbol(string(gp.y_symbol, "_var"))
+    col_mean = Symbol(string(gp.y_symbol, "_mean"))
+    col_var  = Symbol(string(gp.y_symbol, "_var"))
 
     if mode === :mean
-        data[!, col_mean] = mean(fp)
+        # mean-only path: never forms the n×n posterior covariance
+        data[!, gp.y_symbol] = mean(gp.posterior(Xrows))
 
     elseif mode === :var
-        data[!, col_var] = var(fp)
+        _, v = mean_and_var(gp.posterior, Xrows)   # marginal variances, not full cov
+        data[!, col_var] = v
 
     elseif mode === :mean_and_var
-        data[!, col_mean] = mean(fp)
-        data[!, col_var]  = var(fp)
+        m, v = mean_and_var(gp.posterior, Xrows)    # both marginals in one pass
+        data[!, col_mean] = m
+        data[!, col_var]  = v
 
     elseif mode === :sample
-        samples = rand(fp, n_samples)   # Matrix: n_points × n_samples
+        fp = gp.posterior(Xrows)                    # sampling genuinely needs the joint
+        samples = rand(fp, n_samples)
         for i in 1:n_samples
             col = Symbol(string(gp.y_symbol, "_sample_", i))
             data[!, col] = samples[:, i]

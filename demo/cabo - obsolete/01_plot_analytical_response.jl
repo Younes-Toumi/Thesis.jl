@@ -30,7 +30,7 @@ function g_function(x1::Float64, x2::Float64)
     return result
 end
 
-function g_expected(μ1::Float64, μ2::Float64; σ::Float64 = 0.1)
+function g_expected(μ1::Float64, μ2::Float64, σ::Float64)
 
     result = 0.0
     σ² = σ^2
@@ -69,11 +69,9 @@ end
 # x1 ~ N(θ1, 0.1²), x2 ~ N(θ2, 0.1²)
 # θ1, θ2 ∈ [-1.5, 1.5]
 
-function analytical_model(u::Vector{Float64}, θ::Vector{Float64})
+function analytical_model(u::Vector{Float64}, θ::Vector{Float64}, σ)
     # u = [u1, u2] are standard normal samples
     # θ = [θ1, θ2] are the imprecise means
-    σ = 0.1
-
     u1, u2      = u[1], u[2]
     θ_μ1, θ_μ2  = θ[1], θ[2]
 
@@ -140,11 +138,11 @@ using Plots, Distributions, Statistics
 # ============================================================
 # Grid over epistemic space (x1, θσ)
 # ============================================================
-n_μ1 = 1000
-n_μ2 = 1000
+n_μ1 = 2000
+n_μ2 = 2000
 
-μ1_grid = range(-2, 2, length=n_μ1)
-μ2_grid  = range(-2, 2, length=n_μ2)
+μ1_grid = range(θμ1_LOWER, θμ1_UPPER, length=n_μ1)
+μ2_grid  = range(θμ2_LOWER, θμ2_UPPER, length=n_μ2)
 
 MeanSurface = zeros(n_μ1, n_μ2)
 
@@ -153,7 +151,7 @@ MeanSurface = zeros(n_μ1, n_μ2)
 # ============================================================
 for (i, μ1_v) in enumerate(μ1_grid)
     for (j, μ2_v) in enumerate(μ2_grid)
-        MeanSurface[j, i]  = g_expected(μ1_v, μ2_v)
+        MeanSurface[j, i]  = g_expected(μ1_v, μ2_v, σ_FIXED)
     end
 end
 
@@ -193,7 +191,7 @@ scatter!(plt,
 )
 annotate!(
     x_min, y_min + dy,
-    text("($(round(x_min, digits=2)), $(round(y_min, digits=2)), $(round(z_min, digits=2)))", :black, 8)
+    text("($(round(x_min, digits=3)), $(round(y_min, digits=3)), $(round(z_min, digits=3)))", :black, 8)
 )
 
 
@@ -204,14 +202,14 @@ scatter!(plt,
 
 annotate!(
     x_max, y_max + dy,
-    text("($(round(x_max, digits=2)), $(round(y_max, digits=2)), $(round(z_max, digits=2)))", :black, 8)
+    text("($(round(x_max, digits=3)), $(round(y_max, digits=3)), $(round(z_max, digits=3)))", :black, 8)
 )
 
-println("y range: [$(round(minimum(MeanSurface), digits=2)),  $(round(maximum(MeanSurface), digits=2))]")
-print([μ1_grid[min_idx[2]]], [μ2_grid[min_idx[1]]])
+println("y range: [$(round(minimum(MeanSurface), digits=3)),  $(round(maximum(MeanSurface), digits=3))]")
+print(round.([μ1_grid[min_idx[2]], μ2_grid[min_idx[1]]], digits=3))
 print("\n")
-print([μ1_grid[max_idx[2]]], [μ2_grid[max_idx[1]]])
+print(round.([μ1_grid[max_idx[2]], μ2_grid[max_idx[1]]], digits=3))
 
 display(plt)
-
+print("\n")
 savefig(plt, "./assets/mean_response_function.png")

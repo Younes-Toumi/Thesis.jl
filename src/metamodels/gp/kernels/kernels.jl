@@ -39,6 +39,16 @@ function median_pairwise_distance(X::Matrix)
     return m > 0 ? m : 1.0  # guard against degenerate cases
 end
 
+function min_pairwise_distance(X::Matrix)
+    n = size(X,1); n < 2 && return 1.0
+    m = minimum(norm(X[i,:]-X[j,:]) for i in 1:n for j in i+1:n)
+    m > 0 ? m : 1.0
+end
+function max_pairwise_distance(X::Matrix)
+    n = size(X,1); n < 2 && return 1.0
+    maximum(norm(X[i,:]-X[j,:]) for i in 1:n for j in i+1:n)
+end
+
 """
     default_ard_θ(X::Matrix, y::Vector) -> NamedTuple
 
@@ -50,19 +60,21 @@ stationary kernels (Matern32, Matern52, SqExponential):
 """
 function default_ard_θ(X::Matrix, y::Vector)
     d  = size(X, 2)
-    l  = median_pairwise_distance(X)
     σ² = var(y)
+
+    # l  = fill(median_pairwise_distance(X), d)
+    l = [median_pairwise_distance(X[:, j:j]) for j in 1:d]   # one ℓ per input
+ 
+    l_min = 0.1  * min_pairwise_distance(X)      # blocks ℓ→0  (the cond=1.0 disasters)
+    l_max = 10.0 * max_pairwise_distance(X)      # blocks ℓ→∞  (the railed 1e8 values)
+
+
     return (
-        lengthscale = param_bounded(fill(l, d), 1e-9, 1e9),   # Vector -> ARD
-        variance    = param_bounded(σ², 1e-9, 1e9), # bounded, not just positive
-
-        # Bound noise to a small fraction of output variance.
-        # Prevents the optimiser escaping into the noise = ∞, lengthscale=0 degeneracy.
+        lengthscale = param_bounded(l, l_min, l_max),
+        variance    = param_bounded(σ², 1e-10, 1e10),
         noise       = param_positive(0.1 * σ²),
-
     )
 end
-
 
 # ── Parameter Constraints ────────────────────────────────────────────
 # Thin wrappers around ParameterHandling:

@@ -250,3 +250,14 @@ function refit!(pck::PolynomialChaosKriging, X_new::AbstractMatrix{Float64}, y_n
 
     return pck
 end
+
+function evaluate!(
+    pck::PolynomialChaosKriging,
+    data::DataFrame
+)
+    y_pred = predict(pck, Matrix(data), mode=:mean)
+
+    data[!, pck.y_symbol] = y_pred
+
+    return data
+end

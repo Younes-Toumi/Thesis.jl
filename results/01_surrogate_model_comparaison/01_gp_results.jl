@@ -89,22 +89,22 @@ function compare_kernels_averaged(
         col_name = kernel_names_latex[k]
 
         println(rpad(col_name, 12),                             rpad(" & ", 3),
-                rpad(round(mean(col_q2),        digits=2), 3),  rpad(" & ", 3),
-                rpad(round(minimum(col_q2),     digits=2), 3),  rpad(" & ", 3),
-                rpad(round(maximum(col_q2),     digits=2), 3),  rpad(" & ", 3),
-                rpad(round(std(col_q2),         digits=2), 3),  rpad(" & ", 3),
-                rpad(round(mean(col_time),      digits=2), 3),  rpad(" & ", 3),
-                rpad(round(minimum(col_time),   digits=2), 3),  rpad(" & ", 3),
-                rpad(round(maximum(col_time),   digits=2), 3),  rpad(" & ", 3),
-                rpad(round(std(col_time),       digits=2), 3),  rpad(" \\\\", 3),
+                rpad("\$" * round(mean(col_q2),        digits=2)* "\$", 3),  rpad(" & ", 3),
+                rpad("\$" * round(minimum(col_q2),     digits=2)* "\$", 3),  rpad(" & ", 3),
+                rpad("\$" * round(maximum(col_q2),     digits=2)* "\$", 3),  rpad(" & ", 3),
+                rpad("\$" * round(std(col_q2),         digits=2)* "\$", 3),  rpad(" & ", 3),
+                rpad("\$" * round(mean(col_time),      digits=2)* "\$", 3),  rpad(" & ", 3),
+                rpad("\$" * round(minimum(col_time),   digits=2)* "\$", 3),  rpad(" & ", 3),
+                rpad("\$" * round(maximum(col_time),   digits=2)* "\$", 3),  rpad(" & ", 3),
+                rpad("\$" * round(std(col_time),       digits=2)* "\$", 3),  rpad(" \\\\", 3),
         )
     end
 
     return Q2, times
 end
 
-n_train = 10
-n_runs = 20
+n_train = 50
+n_runs = 10
 # ============================================================
 # 1. Four Gaussian Mixture Function g(x1, x2)
 # ============================================================
@@ -162,7 +162,7 @@ function plot_results(qoi, n_train, type, func_name)
         p = boxplot(groups, values;
             xlabel = "",    
             ylabel = "Q² (LOO)",
-            # ylims = (-1, 1),
+            ylims = [0, 1],
             title  = title, legend = false)
     end
     if type == :time

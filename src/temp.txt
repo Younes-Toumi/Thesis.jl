@@ -1,0 +1,128 @@
+ERROR: ArgumentError: Value, 1.2906840776871255e-11, outside of specified bounds (1.0e-9, 1.0e9).
+Stacktrace:
+ [1] bounded
+   @ ~/.julia/packages/ParameterHandling/WkHof/src/parameters_scalar.jl:54 [inlined]
+ [2] param_bounded
+   @ ~/Documents/LUH/Thesis.jl/src/metamodels/gp/kernels/kernels.jl:85 [inlined]
+ [3] default_ard_θ(X::Matrix{Float64}, y::Vector{Float64})
+   @ SurrogateModelling ~/Documents/LUH/Thesis.jl/src/metamodels/gp/kernels/kernels.jl:71
+ [4] default_θ(::SurrogateModelling.GPMatern52, X::Matrix{Float64}, y::Vector{Float64})
+   @ SurrogateModelling ~/Documents/LUH/Thesis.jl/src/metamodels/gp/kernels/Matern52.jl:5
+ [5] 
+   @ SurrogateModelling ~/Documents/LUH/Thesis.jl/src/metamodels/gp/gaussianprocess.jl:103
+ [6] fit!(pck::SurrogateModelling.PolynomialChaosKriging)
+   @ SurrogateModelling ~/Documents/LUH/Thesis.jl/src/metamodels/pck/polynomialchaoskriging.jl:158
+ [7] q2_loo(build_model::var"#compare_surrogates_evolution##4#compare_surrogates_evolution##5"{…}, data::DataFrames.DataFrame, y_symbol::Symbol)
+   @ SurrogateModelling ~/Documents/LUH/Thesis.jl/src/metrics/metrics.jl:53
+ [8] WARNING: Detected access to binding `Main.compare_surrogates_evolution` in a world prior to its definition world.
+  Julia 1.12 has introduced more strict world age semantics for global bindings.
+  !!! This code may malfunction under Revise.
+  !!! This code will error in future versions of Julia.
+Hint: Add an appropriate `invokelatest` around the access to this binding.
+To make this warning an error, and hence obtain a stack trace, use `julia --depwarn=error`.
+compare_surrogates_evolution(physical_model::UncertaintyQuantification.Model, specs::Vector{…}, n_trains::Vector{…})
+   @ Main ~/Documents/LUH/Thesis.jl/results/01_surrogate_model_comparaison/04_comparison_evol_results.jl:69
+ [9] top-level scope
+   @ ~/Documents/LUH/Thesis.jl/results/01_surrogate_model_comparaison/04_comparison_evol_results.jl:85
+Some type information was truncated. Use `show(err)` to see complete types.
+
+
+
+
+
+
+
+
+
+
+#################################
+
+%------------------------------------------------------------
+\section{Static versus Adaptive Design}
+\label{sec:static_vs_dynamic}
+
+The surrogate comparison of \ref{sec:surrogate_validation} established which metamodel provides the best accuracy under a static design. However, the question of \emph{where} those training points are placed is equally consequential. A passive \gls{lhs} distributes points uniformly across the augmented space regardless of the response structure, while an adaptive enrichment strategy concentrates evaluations in regions of high surrogate uncertainty. In the context of \gls{cabo}, the quality of the initial surrogate directly determines how many additional iterations the propagation loop requires before converging to accurate bounds: a better starting surrogate means fewer costly simulator calls inside \gls{cabo}. This section isolates that effect by comparing static and adaptive designs at identical total evaluation budgets, measuring both the surrogate accuracy achieved and the downstream effect on \gls{cabo} convergence.
+
+\subsection{Experimental Setup}
+\label{subsec:static_dynamic_setup}
+
+Two design strategies are compared under a common total budget of $n_{\max} = 50$ simulator evaluations:
+
+\paragraph*{Static Sampling} A single design of $n_{\max}$ points is drawn and the surrogate is trained once on the full dataset. No sequential decisions are made and all evaluation locations are fixed before any simulator output is observed.
+
+\paragraph*{Adaptive Sampling} An initial design of $n_0$ points is generated and the surrogate is trained. The remaining $n_{\max} - n_0$ evaluations are then placed sequentially using the active learning criterion appropriate to the surrogate, that is retrained after each new evaluation. The initial budget is set to $n_0 = 40$ for both the four-Gaussian function and $n_0 = 30$ for Ishigami, consistent with the $10 \cdot n_w$ rule of thumb used throughout.\\
+
+The same design seed is used for the initial design of both strategies, so that any difference in final accuracy is attributable to the sequential placements rather than to the starting configuration.
+
+\subsection{Equal-Budget Accuracy Comparison}
+\label{subsec:equal_budget}
+
+\ref{tab:static_dynamic_g} and \ref{tab:static_dynamic_ish} compare the final $Q^2$ achieved by each strategy at $n_{\max} = 50$ on the two benchmark functions, for the \gls{gp} surrogate. The overhead column reports the wall-clock time spent on the adaptive sampling, excluding all simulator calls.
+
+\begin{table}[H]
+\centering
+\caption{Static vs. adaptive design on the four-Gaussian function.}
+\label{tab:static_dynamic_g}
+\begin{tabular}{|l|cccc|}
+\hline
+Strategy & $n_{\max}$ & $Q^2$ & - & Overhead (s)\\
+\hline
+Static design       & 50   & - & - & - \\
+Adaptive design     & 50   & - & - & - \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Static vs. adaptive design on the Ishigami function.}
+\label{tab:static_dynamic_ish}
+\begin{tabular}{|l|cccc|}
+\hline
+Strategy & $n_{\max}$ & $Q^2$ & - & Overhead (s)\\
+\hline
+Static desgin       & 50  & - & - & - \\
+Adaptive design     & 50  & - & - & - \\
+\hline
+\end{tabular}
+\end{table}
+
+
+[Discussion: ]\\
+
+\subsection{Learning Curves}
+\ref{fig:learning_curves_g} and \ref{fig:learning_curves_ish} plot $Q^2$ as a function of the cumulative number of simulator evaluations $n$ from $n_0$ to $n_{\max} = 50$, for both strategies.
+
+\begin{figure}[H]
+\centering
+\placeholder{[Figure: $Q^2$vs $n$ for GP, PCE, PCK under static LHS and adaptive enrichment on the four-Gaussian function. Solid lines: adaptive. Dashed lines: static. Shaded bands: $\pm$ std. Horizontal dashed line at $Q^2 = 0.99$. Colours distinguish surrogate families.]}
+
+\caption{Learning curves on the four-Gaussian function under static \gls{lhs} and adaptive enrichment.}
+\label{fig:learning_curves_g}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\placeholder{[Figure: same structure as \ref{fig:learning_curves_g} but for the Ishigami function.]}
+\caption{Learning curves on the Ishigami function under static \gls{lhs} and adaptive enrichment.}
+\label{fig:learning_curves_ish}
+\end{figure}
+
+
+\subsection{Spatial Distribution of Training Points}
+\label{subsec:spatial_distribution}
+
+For the four-Gaussian function, the two-dimensional epistemic space $(\theta_1, \theta_2) \in [-1.5, 1.5]^2$ allows the spatial distribution of training points to be visualised 
+directly alongside the true expected response surface $\mathbb{E}[g \mid \theta_1, \theta_2]$ of 
+\ref{eq:g_expected}. \ref{fig:spatial_g} overlays the initial \gls{lhs} design and all 
+adaptively placed points on a heatmap of the true epistemic landscape, allowing direct inspection of whether the enrichment criterion targets the regions relevant to bound estimation.
+
+\begin{figure}[H]
+\centering
+\placeholder{[Figure: heatmap of $\mathbb{E}[g \mid \mu_1, \mu_2]$ over $[-1.5, 1.5]^2$. Overlaid: initial LHS points (diamonds, cyan), adaptively added points (crosses), true minimum location (green circle), true maximum location (red square). Two panels side by side: adaptive targeting the minimum (left) and maximum (right).]}
+
+\caption{Spatial distribution of training points on the four-Gaussian epistemic landscape.}
+\label{fig:spatial_g}
+\end{figure}
+
+[Discussion and whats next: ]\\

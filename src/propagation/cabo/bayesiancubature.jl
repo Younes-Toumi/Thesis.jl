@@ -24,6 +24,7 @@ function h_pvc(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, W_prime,
     return (k_cross_sum - dot(v1, v2_sum)) / Nx
 end
 
+
 function pvc_objective(gp, cholK, W, u::AbstractVector, v_plus::AbstractVector, W_prime, v2_sum)
     h   = h_pvc(gp, cholK, W, u, v_plus, W_prime, v2_sum)
     phi = φ_vec(u)
