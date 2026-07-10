@@ -1,66 +1,82 @@
 function build_kl_sampler(gp, W::Matrix{Float64}, X_train::Matrix{Float64};
-                           N_samples, energy_threshold=0.99, δ=1e-8)
-
+                           N_samples, Nx, energy_threshold=0.99, δ=1e-8)
     kern    = gp.kernel_posterior
     N0      = size(W, 1)
+    n_train = size(X_train, 1)
+    Ng      = N_samples
 
-    # Prior kernel matrices
-    # ── in build_kl_sampler  ────────────────────
     K_W   = kernelmatrix(kern, RowVecs(W),       RowVecs(W))
     K_tr  = kernelmatrix(kern, RowVecs(X_train), RowVecs(X_train))
     K_ctW = kernelmatrix(kern, RowVecs(X_train), RowVecs(W))
-
     L = cholesky(Symmetric(K_tr + δ*I)).L
-    A = L' \ (L \ K_ctW)                # K_train⁻¹ K_ctW  (n_train × N0) — reused in closure
+    A = L' \ (L \ K_ctW)
 
-    # ── FIX 1: eigendecompose the POSTERIOR covariance, not the prior ─────────
-    # K_W_post = K_W − K_ctW^T K_train⁻¹ K_ctW
     K_W_post = Symmetric(K_W .- K_ctW' * A)
-
     eig    = eigen(K_W_post)
     λ_post = max.(eig.values, 0.0)
     V_post = eig.vectors
     idx    = sortperm(λ_post, rev=true)
     λ_post, V_post = λ_post[idx], V_post[:, idx]
 
-   # ── Energy-based truncation — this is what energy_threshold was always for ──
     total_energy      = sum(λ_post)
     cumulative_energy = cumsum(λ_post) ./ total_energy
     r_energy = searchsortedfirst(cumulative_energy, energy_threshold)
+    floor_   = max(1e-10 * total_energy, 1e-14)
+    r_floor  = something(findlast(λ_post .> floor_), r_energy)
+    r        = min(r_energy, r_floor)
+    V_r, λ_r = V_post[:, 1:r], λ_post[1:r]
 
-    # Numerical floor as a secondary guard
-    floor   = max(1e-10 * total_energy, 1e-14)
-    r_floor = something(findlast(λ_post .> floor), r_energy)
+    Ξ         = randn(r, Ng)
+    coeff_mat = V_r * (Ξ ./ reshape(sqrt.(λ_r), :, 1))   # N0 × Ng, built once
 
-    r    = min(r_energy, r_floor)
-    V_r  = V_post[:, 1:r]
-    λ_r  = λ_post[1:r]
+    # ── preallocated ONCE, reused every call ──────────────────────────────
+    nthreads = Threads.nthreads()
+    buffers = [
+        (
+            K_qW = Matrix{Float64}(undef, Nx, N0),
+            K_qtr = Matrix{Float64}(undef, Nx, n_train),
+            K_qW_post = Matrix{Float64}(undef, Nx, N0),
+            kW_mean = Vector{Float64}(undef, N0)
+        )
+        for _ in 1:nthreads
+    ]
+    realization_bufs = [Vector{Float64}(undef, Nx) for _ in 1:Threads.maxthreadid()]
 
-    # println("  EOLE (posterior): N0=$N0, r=$r active modes " *
-    #         "($(round(100*cumulative_energy[r], digits=1))% energy captured)")
+    return function gp_samples!(qoi_buffer, input; qoi_type::Symbol=:mean, y_star=nothing)
+        fill!(qoi_buffer, 0.0)
 
-    # ── Form 2 coefficient — gives Var[h(w)] ≈ k_post(w,w) ────────────
-    Ξ         = randn(r, N_samples)
-    coeff_mat = V_r * (Ξ ./ reshape(sqrt.(λ_r), :, 1))  # N0 × N_samples
+        @assert size(input, 1) == Nx "gp_samples!: input size $(size(input,1)) != Nx=$Nx"
 
-    # ── Closure: dispatch on AbstractVector (single) vs AbstractMatrix (batch) ─
-    return function gp_samples(input)
-        if input isa AbstractVector
-            # ── single point ──────────────────────────────────────────────────
-            kW   = vec(kernelmatrix(kern, RowVecs(reshape(input,1,:)), RowVecs(W)))
-            ktr  = vec(kernelmatrix(kern, RowVecs(reshape(input,1,:)), RowVecs(X_train)))
-            μ_w  = predict(gp, reshape(input, 1, :); mode=:mean)
-            kW_post = kW .- A' * ktr           # N0-vector  (= 0 at training pts)
-            return μ_w .+ coeff_mat' * kW_post  # N_samples-vector
+        tid = Threads.threadid()
+        buf = buffers[tid]
 
-        else
-            # ── batch: input is Nx × d ────────────────────────────────────────
-            K_qW   = kernelmatrix(kern, RowVecs(input), RowVecs(W))        # Nx_q × N0
-            K_qtr  = kernelmatrix(kern, RowVecs(input), RowVecs(X_train))  # Nx_q × n_train
-            μ_q    = predict(gp, input; mode=:mean)        # Nx_q-vector (one predict call)
-            K_qW_post = K_qW .- K_qtr * A         # Nx_q × N0
+        K_qW_buf = buf.K_qW
+        K_qtr_buf = buf.K_qtr
+        K_qW_post_buf = buf.K_qW_post
+        kW_post_mean_buf = buf.kW_mean
 
-            return μ_q' .+ coeff_mat' * K_qW_post'  # N_samples × Nx_q
+        kernelmatrix!(K_qW_buf,  kern, RowVecs(input), RowVecs(W))
+        kernelmatrix!(K_qtr_buf, kern, RowVecs(input), RowVecs(X_train))
+        μ_q = predict(gp, input; mode=:mean)          # small Nx-vector — see note below
+
+        K_qW_post_buf .= K_qW_buf
+        mul!(K_qW_post_buf, K_qtr_buf, A, -1.0, 1.0)   # fused: K_qW_post = K_qW - K_qtr*A, in place
+
+        if qoi_type === :mean
+            sum!(reshape(kW_post_mean_buf, 1, :), K_qW_post_buf)
+            kW_post_mean_buf ./= Nx
+            mul!(qoi_buffer, coeff_mat', kW_post_mean_buf)   # writes directly into qoi_buffer
+            qoi_buffer .+= mean(μ_q)
+
+        else  # :var or :pf — one realization at a time, one small reused buffer
+            Threads.@threads :static for s in 1:Ng
+                buf = realization_bufs[Threads.threadid()]
+                mul!(buf, K_qW_post_buf, view(coeff_mat, :, s))
+                buf .+= μ_q
+                qoi_buffer[s] = qoi_type === :var ? var(buf; corrected=true) :
+                                                    count(<(y_star), buf) / Nx
+            end
         end
+        return qoi_buffer
     end
 end

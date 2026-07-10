@@ -113,7 +113,7 @@ function compare_surrogates_evolution(
 end
 
 # n_trains = [50, 100, 150, 200, 250, 300, 400, 500]
-n_trains = [300, 350]
+n_trains = [30]
 
 gps, pcks = compare_surrogates_evolution(
     physical_model, 
@@ -121,20 +121,16 @@ gps, pcks = compare_surrogates_evolution(
     n_trains,
 )
 
-# =======================================================================
-# Step 3. Treat the GP as a the "LF" Physical Model 
-# =======================================================================
 
 function true_doubleloop(
     model, imprecise_inputs;
     n_total::Int, k, qoi::Symbol, y_star::Float64,
-    surrogate::Bool = false,        # ← flag: false = physical model, true = augmented-space surrogate
-    specs = nothing,                # ← required when surrogate=true
+    surrogate::Bool = false,
+    specs = nothing,
 )
     inputs = wrap(imprecise_inputs)
     imp  = filter(isimprecise, inputs)
     prec = filter(!isimprecise, inputs)
-
     lb, ub = float.(bounds(inputs))
     d = length(lb)
 
@@ -147,22 +143,43 @@ function true_doubleloop(
     if surrogate
         specs === nothing && error("Pass `specs` when surrogate=true.")
         x_names, w_names, u_names, v_names = spec_names(specs)
+        d_u, d_v = length(u_names), length(v_names)
+
+        # precompute the (lb, ub) relaxed-bounds pairs ONCE — these never
+        # depend on θ, only on the specs. Avoids recomputing them n_θ times.
+        relaxed_bounds = Tuple{Float64,Float64}[]
+        for s in specs
+            if s isa IntervalSpec
+                push!(relaxed_bounds, compute_relaxed_bounds(s.θ_L, s.θ_U; v_L=s.v_L, v_U=s.v_U))
+            elseif s isa HybridSpec
+                for j in 1:length(s.param_names)
+                    push!(relaxed_bounds, compute_relaxed_bounds(s.θ_L[j], s.θ_U[j]; v_L=s.v_L[j], v_U=s.v_U[j]))
+                end
+            end
+        end
+
+        print(relaxed_bounds)
+
+        # preallocate the aleatory+epistemic matrix ONCE, reused every iteration
+        X_buf = Matrix{Float64}(undef, n_u, d_u + d_v)
     end
 
     for i in 1:n_θ
         θ = lb .+ rand(d) .* (ub .- lb)
 
         if !surrogate
-            # ── PHYSICAL: sample x ~ N(θ, σ²) in physical space, evaluate true model ──
             θ_inputs = map_to_precise_inputs(θ, imp)
             df = sample([prec..., θ_inputs...], n_u)
             evaluate!(model, df)
             y = df[:, model.name]
         else
-            # ── SURROGATE: build augmented (u,v) df, evaluate GP in SNS ──
-            df = build_inner_augmented(specs, θ, n_u, u_names, v_names)
-            SurrogateModelling.evaluate!(model, df)
-            y = df[:, model.y_symbol]
+            # write directly into X_buf instead of building a DataFrame
+            @views X_buf[:, 1:d_u] .= randn(n_u, d_u)
+            for j in 1:d_v
+                lb_j, ub_j = relaxed_bounds[j]
+                @views X_buf[:, d_u+j] .= θ_to_v(θ[j], lb_j, ub_j)
+            end
+            y = predict(model, X_buf; mode=:mean)   # matrix straight in, no DataFrame round-trip
         end
 
         qoi_vals[i] =
@@ -183,66 +200,20 @@ end
 
 
 
-"""
-    build_inner_augmented(specs, θ, n_u, u_names, v_names) -> DataFrame
-
-Inner-loop augmented design for a FIXED epistemic θ (in raw interval space).
-v-columns: θ mapped to SNS via the SAME relaxed-bounds + θ_to_v chain that
-build_augmented_design used at training time. u-columns: n_u standard-normal
-aleatory draws. Column layout matches w_names = [u_names...; v_names...].
-"""
-function build_inner_augmented(specs, θ, n_u, u_names, v_names)
-    df = DataFrame()
-
-    # ── aleatory u-columns: n_u standard-normal draws (SNS convention) ──
-    for un in u_names
-        df[!, un] = randn(n_u)
-    end
-
-    # ── epistemic v-columns: map each θ component through the SAME chain
-    #    used in build_augmented_design (compute_relaxed_bounds → θ_to_v) ──
-    v_vals = Float64[]
-    θ_idx = 0
-    for s in specs
-        if s isa IntervalSpec
-            θ_idx += 1
-            lb, ub = compute_relaxed_bounds(s.θ_L, s.θ_U; v_L=s.v_L, v_U=s.v_U)
-            push!(v_vals, θ_to_v(θ[θ_idx], lb, ub))
-
-        elseif s isa HybridSpec
-            for j in 1:length(s.param_names)
-                θ_idx += 1
-                lb, ub = compute_relaxed_bounds(s.θ_L[j], s.θ_U[j]; v_L=s.v_L[j], v_U=s.v_U[j])
-                push!(v_vals, θ_to_v(θ[θ_idx], lb, ub))
-            end
-        end
-        # PreciseSpec contributes no v-column
-    end
-
-    for (j, vn) in enumerate(v_names)
-        df[!, vn] = fill(v_vals[j], n_u)
-    end
-
-    return df
-end
-
-
-
 # surrogate propagation — same call, two extra kwargs
 
 for (idx, n_train) in enumerate(n_trains)
     result_mean_gp = @time "gp mean: " true_doubleloop(
         gps[idx], [x1, x2];
-        n_total=2*10^8, k=5.0, qoi=:mean, y_star=-1.427,
+        n_total=1*10^6, k=5.0, qoi=:mean, y_star=-1.427,
         surrogate=true, specs=specs
     )
 
     println("gp  (n₀ = $n_train): bounds = $(round.(result_mean_gp.bounds, digits=3))")
 
-
     result_mean_pck = @time "pck mean: " true_doubleloop(
         pcks[idx], [x1, x2];
-        n_total=2*10^8, k=5.0, qoi=:mean, y_star=-1.427,
+        n_total=1*10^6, k=5.0, qoi=:mean, y_star=-1.427,
         surrogate=true, specs=specs
     )
 
@@ -252,7 +223,7 @@ for (idx, n_train) in enumerate(n_trains)
 
     result_pf_gp = @time "gp pf: " true_doubleloop(
         gps[idx], [x1, x2];
-        n_total=5*10^8, k=0.01, qoi=:pf, y_star=-1.427,
+        n_total=1*10^6, k=0.01, qoi=:pf, y_star=-1.427,
         surrogate=true, specs=specs
     )
 
@@ -261,7 +232,7 @@ for (idx, n_train) in enumerate(n_trains)
 
     result_pf_pck = @time "pck pf: " true_doubleloop(
         pcks[idx], [x1, x2];
-        n_total=5*10^8, k=0.01, qoi=:pf, y_star=-1.427,
+        n_total=1*10^6, k=0.01, qoi=:pf, y_star=-1.427,
         surrogate=true, specs=specs
     )
 

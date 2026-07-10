@@ -253,9 +253,6 @@ function build_augmented_design(
         UncertaintyQuantification.evaluate!(physical_model, phys_df)
         aug_df[!, y_symbol] = phys_df[!, y_symbol]
 
-        # y = [physical_model(x_samples[row, :]...) for row in 1:n_samples]
-        # aug_df[!, y_symbol]  = y
-        # phys_df[!, y_symbol] = y
     end
 
     return aug_df, phys_df

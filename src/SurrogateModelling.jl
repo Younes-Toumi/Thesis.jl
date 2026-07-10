@@ -148,10 +148,10 @@ include("propagation/cabo/cabo.jl")
 export 
     ei_objective,
     precompute_h_pvc_terms, h_pvc, pvc_objective, u_objective,
-    build_kl_sampler,
+    build_kl_sampler, make_dist,
     compute_relaxed_bounds, θ_to_v, v_to_θ, x_to_u, u_to_x, n_v_dims, n_u_dims,
     AbstractInputSpec, PreciseSpec, IntervalSpec, HybridSpec, InputSpec, spec_names, build_augmented_design, augmented_to_physical, augmented_to_epistemic, build_bounds,
-    estimate_qoi, estimate_propagation_qoi, best_candidate, make_pso, estimate_final_bound, cabo_loop
+    estimate_qoi!, estimate_propagation_qoi, best_candidate, make_pso, estimate_final_bound, cabo_loop
 
 
 # models 

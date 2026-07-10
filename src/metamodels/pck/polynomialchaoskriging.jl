@@ -255,7 +255,7 @@ function evaluate!(
     pck::PolynomialChaosKriging,
     data::DataFrame
 )
-    y_pred = predict(pck, Matrix(data), mode=:mean)
+    y_pred = predict(pck, Matrix(data[:, pck.x_names]), mode=:mean)
 
     data[!, pck.y_symbol] = y_pred
 

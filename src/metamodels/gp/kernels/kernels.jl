@@ -65,14 +65,14 @@ function default_ard_θ(X::Matrix, y::Vector)
     # l  = fill(median_pairwise_distance(X), d)
     l = [median_pairwise_distance(X[:, j:j]) for j in 1:d]   # one ℓ per input
  
-    l_min = 0.1  * min_pairwise_distance(X)      # blocks ℓ→0  (the cond=1.0 disasters)
-    l_max = 10.0 * max_pairwise_distance(X)      # blocks ℓ→∞  (the railed 1e8 values)
+    l_min = min_pairwise_distance(X)      # blocks ℓ→0  (the cond=1.0 disasters)
+    l_max = max_pairwise_distance(X)      # blocks ℓ→∞  (the railed 1e8 values)
 
 
     return (
         lengthscale = param_bounded(l, l_min, l_max),
         variance    = param_bounded(σ², 1e-10, 1e10),
-        noise       = param_positive(0.1 * σ²),
+        noise       = param_positive(1e-7),
     )
 end
 

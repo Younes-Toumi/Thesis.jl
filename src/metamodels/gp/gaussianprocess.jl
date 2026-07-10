@@ -215,7 +215,7 @@ function fit!(gp::GaussianProcess)
     n_restarts = 10
 
     results = map(1:n_restarts) do i
-        spread = 0.2 * (i - 1)
+        spread = 0.5 * (i - 1)
         θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ spread .* randn(length(flat_θ0))
 
         try
@@ -318,7 +318,7 @@ function refit!(gp::GaussianProcess, X_new::AbstractMatrix{Float64}, y_new::Abst
     n_restarts = 3
 
     results = map(1:n_restarts) do i
-        spread = 0.2 * (i - 1)
+        spread = 0.5 * (i - 1)
         θ_start = i == 1 ? flat_θ0 : flat_θ0 .+ spread .* randn(length(flat_θ0))
 
         try
@@ -457,13 +457,12 @@ function evaluate!(
     gp       ::GaussianProcess,
     data     ::Union{DataFrame, DataFrameRow};
     mode     ::Symbol = :mean,
-    n_samples::Int    = 1
 )
     gp.posterior === nothing && error("Call fit!(gp) before evaluate!.")
 
     Xmat  = Matrix(data[:, gp.x_names])
     Xrows = RowVecs(Xmat)                          # zero-copy, was vector-of-vectors
-
+    
     col_mean = Symbol(string(gp.y_symbol, "_mean"))
     col_var  = Symbol(string(gp.y_symbol, "_var"))
 
@@ -479,14 +478,6 @@ function evaluate!(
         m, v = mean_and_var(gp.posterior, Xrows)    # both marginals in one pass
         data[!, col_mean] = m
         data[!, col_var]  = v
-
-    elseif mode === :sample
-        fp = gp.posterior(Xrows)                    # sampling genuinely needs the joint
-        samples = rand(fp, n_samples)
-        for i in 1:n_samples
-            col = Symbol(string(gp.y_symbol, "_sample_", i))
-            data[!, col] = samples[:, i]
-        end
 
     else
         throw(ArgumentError("Unknown mode: $mode. Choose :mean, :var, :mean_and_var, or :sample."))

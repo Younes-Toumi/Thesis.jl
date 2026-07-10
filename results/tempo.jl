@@ -1,4 +1,5 @@
 using LinearAlgebra
+using BenchmarkTools
 
 function expensive_function()
     return cond(rand(3, 3))
@@ -41,9 +42,8 @@ function tempo_good!(z:: Vector{Float64}, w::Matrix{Float64})
     @. z = x^2 + y^2
 end
 
-w = rand(50_000_000, 2)
+w = rand(20_000_000, 2)
 z = similar(@view w[:,1])
 
-res1 = @time "bad" tempo_bad(w);
-res2 = @time "good" tempo_good!(z, w);
-
+res1 = @time tempo_bad(w);
+res2 = @time tempo_good!(z, w);
