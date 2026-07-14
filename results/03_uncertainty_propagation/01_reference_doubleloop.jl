@@ -10,36 +10,6 @@ X_g = [x1_g, x2_g]
 physical_model = model_gfunction
 
 
-
-# function doubleloop_mean(model, imprecise_inputs; n_u)
-#     inputs = wrap(imprecise_inputs)
-#     imp = filter(isimprecise, inputs)
-#     prec = filter(!isimprecise, inputs)
-
-#     function mean_at(x)
-#         θ_inputs = map_to_precise_inputs(x, imp)
-#         df = sample([prec..., θ_inputs...], n_u)
-#         evaluate!(model, df)
-#         return mean(df[:, model.name])
-#     end
-
-#     lb, ub = float.(bounds(inputs))
-#     x0 = middle.(lb, ub)
-
-#     res_lb = minimize(RobustOrthoMADS(length(x0)), x ->  mean_at(x), x0;
-#                       lowerbound=lb, upperbound=ub, min_mesh_size=1e-13)
-#     res_ub = minimize(RobustOrthoMADS(length(x0)), x -> -mean_at(x), x0;
-#                       lowerbound=lb, upperbound=ub, min_mesh_size=1e-13)
-
-#     return Interval(res_lb.f, -res_ub.f), res_lb.x, res_ub.x
-# end
-
-# μ_bounds, θ_min, θ_max = doubleloop_mean(physical_model, [x1_g, x2_g], n_u=15000)
-# println("μ bounds: ", μ_bounds)   # cross-check against analytical [-1.35, 1.33]
-# println("θ_min: ", round.(θ_min, digits=3))   # cross-check against analytical [-1.35, 1.33]
-# println("θ_max: ", round.(θ_max, digits=3))   # cross-check against analytical [-1.35, 1.33]
-
-
 # design = MonteCarlo(15000)
 
 # df = sample(X_g, design)
@@ -191,11 +161,12 @@ function true_doubleloop(
     lb, ub = float.(bounds(inputs))
     d = length(lb)
 
-    n_θ = Int(ceil(sqrt(n_total / k)))
-    n_u = Int(ceil(sqrt(n_total * k)))
+    n_θ = 1000
+    n_u = Int(ceil(n_total / n_θ))
 
     qoi_vals = Vector{Float64}(undef, n_θ)
     θ_array  = Matrix{Float64}(undef, n_θ, d)
+
 
     for i in 1:n_θ
         θ = lb .+ rand(d) .* (ub .- lb)
@@ -279,13 +250,13 @@ end
 # =========================================================
 # Run TWO SEPARATE studies
 # =========================================================
-k_mean = 5
-k_pf = 0.007
+k_mean = 5.0
+k_pf = 0.01
 
 budgets = Int[
     i * 10^e
-    for e in 2:8
-    for i in 1:2:9
+    for e in 3:7
+    for i in 1:3:7
 ]
 
 # ---- Study 1: expected response (mean) ----
@@ -298,15 +269,15 @@ plot!(p_mean, ylims=[-1.5, 1.5])
 display(p_mean)
 
 # ---- Study 2: failure probability (Pf) ----
-results_pf = convergence_study(
-    physical_model, [x1_g, x2_g];
-    budgets = budgets, k = k_pf, qoi = :pf, y_star = -1.427, tol = 0.001,
-)
-p_pf = plot_convergence(results_pf, "Pf bounds", "Failure probability convergence")
-display(p_pf)
+# results_pf = convergence_study(
+#     physical_model, [x1_g, x2_g];
+#     budgets = budgets, k = k_pf, qoi = :pf, y_star = -1.427, tol = 0.001,
+# )
+# p_pf = plot_convergence(results_pf, "Pf bounds", "Failure probability convergence")
+# display(p_pf)
 
 println("\nMean converged at budget:  ", results_mean.budget[end], "  (", results_mean.calls[end], " calls)")
-println("Pf   converged at budget:  ", results_pf.budget[end],   "  (", results_pf.calls[end],   " calls)")
+# println("Pf   converged at budget:  ", results_pf.budget[end],   "  (", results_pf.calls[end],   " calls)")
 
 
 

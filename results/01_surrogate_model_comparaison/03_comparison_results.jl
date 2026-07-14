@@ -11,21 +11,21 @@ using LinearAlgebra
 # Step 1. Augmented Space Setup: Four Gaussian Mixture Function g(x1, x2)
 # =======================================================================
 
-# x1 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x1)
-# x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x2)
+x1 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x1)
+x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x2)
 
-# specs = InputSpec.([x1, x2])     # broadcasts dispatch over each UQ.jl input
-# physical_model = model_gfunction
-# print("Gaussian Mixture...\n")
+specs = InputSpec.([x1, x2])     # broadcasts dispatch over each UQ.jl input
+physical_model = model_gfunction
+print("Gaussian Mixture...\n")
 
-x1 = IntervalVariable(-pi, pi, :x1)
-x2 = IntervalVariable(-pi, pi, :x2)
-x3 = IntervalVariable(-pi, pi, :x3)
+# x1 = IntervalVariable(-pi, pi, :x1)
+# x2 = IntervalVariable(-pi, pi, :x2)
+# x3 = IntervalVariable(-pi, pi, :x3)
 
 
-specs = InputSpec.([x1, x2, x3])     # broadcasts dispatch over each UQ.jl input
-physical_model = model_ishigami
-print("Ishigami...\n")
+# specs = InputSpec.([x1, x2, x3])     # broadcasts dispatch over each UQ.jl input
+# physical_model = model_ishigami
+# print("Ishigami...\n")
 
 
 x_names, w_names, u_names, v_names = spec_names(specs)
@@ -98,13 +98,13 @@ function compare_surrogates_averaged(
     n_pool = 1_000_000
     data_aug_pool, _ = build_augmented_design(physical_model, specs, n_pool)
 
-    pck_p_max = 3
+    pck_p_max = 2
 
     kernel_type = GPMatern52
     bases = fill(SurrogateModelling.HermiteBasis(), length(w_names))
     pce_solver = SurrogateModelling.LASSOSolver
 
-    pck_degree = QBall(pck_p_max, 0.5)
+    pck_degree = TotalDegree(pck_p_max)
 
 
     gp_q2s     = zeros(n_runs)
@@ -188,8 +188,8 @@ function compare_surrogates_averaged(
 
 end
 
-n_train = 50
-n_runs = 10
+n_train = 30
+n_runs = 2
 
 gp_q2s, pck_q2s, gp_fit_times, pck_fit_times, gp_pool_times, pck_pool_times = compare_surrogates_averaged(
     physical_model, 

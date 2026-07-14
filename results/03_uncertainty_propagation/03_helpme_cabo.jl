@@ -37,8 +37,8 @@ metamodel = GaussianProcess(data_aug_train, :y, kernel_type=kernel())
 println("MSE: $(round(mse(data_aug_test.y, μ_test), digits=5))")
 println("Q²:  $(round(q2(data_aug_test.y, μ_test), digits=5))")
 
-Ng = 500
-Nx = 500
+Ng = 700
+Nx = 2000
 
 print("Params: Ng = $Ng, Nx = $Nx\n")
 
@@ -227,6 +227,7 @@ function plot_convergence(cabo_min, cabo_max, n_train, true_bound, ylabel_str, t
         ylabel = ylabel_str * " min", title = title_str,
         legend = :topleft,
         size = (760, 440),
+        ylims = [-1.4, -1.2],
         left_margin = 5Plots.mm, right_margin = 5Plots.mm,
     )
 
@@ -239,6 +240,7 @@ function plot_convergence(cabo_min, cabo_max, n_train, true_bound, ylabel_str, t
         xlabel = "Total budget", ylabel = ylabel_str * " max",
         legend = :topleft,
         size = (760, 440),
+        ylims = [1.2, 1.4],
         left_margin = 5Plots.mm, right_margin = 5Plots.mm,
     )
 

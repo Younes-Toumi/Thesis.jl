@@ -1,6 +1,6 @@
-function make_pso(; N::Int=60, ω=0.8, C1=2.0, C2=2.0)
+function make_pso(; N::Int=50, ω=0.8, C1=2.0, C2=2.0)
     p = Metaheuristics.PSO(N=N, ω=ω, C1=C1, C2=C2)
-    p.options.iterations = 300
+    p.options.iterations = 200
     return p
 end
 
@@ -60,44 +60,36 @@ end
 function estimate_final_bound(
     gp, data, specs, qoi_type, direction, y_star,
     u_names, v_names, w_names;
-    N0::Int       = 500,
-    Ng::Int       = 100,
-    Nx_final::Int = 20_000,
+    Nx_final::Int = 10_000,
 )
     n_u = length(u_names)
     n_v = length(v_names)
-    n_w = n_u + n_v
 
-    # ── STAGE 1: locate θ_bound on the pure mean (α=0) ──────────────────────
-    W_eole, _         = build_augmented_design(nothing, specs, N0)
-    W_support = data[:, w_names]
-    gp_samples_final! = build_kl_sampler(gp, Matrix(W_eole), Matrix(W_support);
-                                          N_samples=Ng, Nx=Nx_final)
-
-    # buffers matched to THIS closure's Nx_final — not the main loop's Nx
     W_aug_final, _ = build_augmented_design(nothing, specs, Nx_final)
     u_final        = Matrix(W_aug_final[:, u_names])
 
-    W_buffer_final = Matrix{Float64}(undef, Nx_final, n_w)
-    @views W_buffer_final[:, 1:n_u] .= u_final
-    qoi_buffer_final = Vector{Float64}(undef, Ng)
-
     v_data = Matrix(data[:, v_names])
-    v_bound_index, _, _ = best_candidate(qoi_type, gp_samples_final!, qoi_buffer_final, W_buffer_final,
-                                          n_u, v_data, direction; α=0.0, y_star=y_star)
-    v_bound = Vector(data[v_bound_index, v_names])
+    n_candidates = size(v_data, 1)
+
+    qoi_of_mean = Vector{Float64}(undef, n_candidates)
+    X_probe = Matrix{Float64}(undef, Nx_final, n_u + n_v)
+    @views X_probe[:, 1:n_u] .= u_final
+
+    for i in 1:n_candidates
+        v = @view v_data[i, :]
+        @views X_probe[:, n_u+1:end] .= v'
+        μ_pred = predict(gp, X_probe; mode=:mean)
+        qoi_of_mean[i] = qoi_type == :mean ? mean(μ_pred) :
+                         qoi_type == :var  ? var(μ_pred; corrected=true) :
+                         qoi_type == :pf   ? mean(μ_pred .< y_star) :
+                         error("Unknown qoi_type: $qoi_type")
+    end
+
+    idx = direction == :min ? argmin(qoi_of_mean) : argmax(qoi_of_mean)
+    v_bound = Vector(v_data[idx, :])
     θ_bound = augmented_to_epistemic(v_bound, specs)
 
-    # ── STAGE 2: report the direct integral on the current GP (no EOLE) ─────
-    W_final = hcat(u_final, repeat(v_bound', Nx_final, 1))
-    μ_pred  = predict(gp, W_final; mode=:mean)
-
-    μ_bound = qoi_type == :mean ? mean(μ_pred) :
-              qoi_type == :var  ? var(μ_pred; corrected=true) :
-              qoi_type == :pf   ? mean(μ_pred .< y_star) :
-              error("Unknown qoi_type: $qoi_type")
-    
-    return (μ_bound = μ_bound, θ_bound = θ_bound, v_bound = v_bound)
+    return (μ_bound = qoi_of_mean[idx], θ_bound = θ_bound, v_bound = v_bound)
 end
 
 function cabo_loop(
@@ -133,7 +125,7 @@ function cabo_loop(
     bound_history = Float64[]
 
     kernel_type = gp_init.kernel_type
-    N0 = 600 # 1000   # separate, smaller - sized for EOLE eigenbasis resolution
+    N0 = 300 # 1000   # separate, smaller - sized for EOLE eigenbasis resolution
 
     W_aug, _  = build_augmented_design(nothing, specs, Nx)
     u_samples = Matrix(W_aug[:, u_names])
@@ -186,7 +178,7 @@ function cabo_loop(
         # ════ Part 2: BC engine ═══════════════════════════════════════════════
         if qoi_type == :pf
             res_u = @time "u objective " Metaheuristics.optimize(
-                u -> u_objective(gp, u, v_plus),
+                u -> u_objective(gp, u, v_plus, y_star),
                 bounds_u, make_pso()
             )            
         else
@@ -222,12 +214,23 @@ function cabo_loop(
         refit!(gp, reshape(w_plus, 1, :), [y_plus])
 
         # monitoring the current bound
-        v_current_best_index, μ_qoi_current_best, σ_qoi_current_best = best_candidate(qoi_type, gp_samples!, qoi_buffer, W_buffer, n_u, v_data, direction; α=0.0, y_star = y_star)
-        v_current_best     = Vector(data[v_current_best_index, v_names])
+        # 1. quick one:
+        # v_current_best_index, μ_qoi_current_best, σ_qoi_current_best = best_candidate(qoi_type, gp_samples!, qoi_buffer, W_buffer, n_u, v_data, direction; α=0.0, y_star = y_star)
+        # v_current_best     = Vector(data[v_current_best_index, v_names])
 
-        μ_qoi_current_best_bound = μ_qoi_current_best[v_current_best_index]
-        θ_current_best_bound =  augmented_to_epistemic(v_current_best, specs)
+        # μ_qoi_current_best_bound = μ_qoi_current_best[v_current_best_index]
+        # θ_current_best_bound =  augmented_to_epistemic(v_current_best, specs)
         
+        # 2. more cumbersome
+        result = estimate_final_bound(
+            gp, data, specs, qoi_type, direction, y_star,
+            u_names, v_names, w_names;
+            Nx_final=10_000,
+        )
+
+        μ_qoi_current_best_bound = result.μ_bound
+        θ_current_best_bound           = result.θ_bound
+
         println("    Current estimated bound: $(round(μ_qoi_current_best_bound, digits=3)) @ θ = $(round.(θ_current_best_bound, digits=3))\n")
         
 
@@ -245,11 +248,11 @@ function cabo_loop(
     end
     
     result = estimate_final_bound(
-        gp, data, specs, qoi_type, direction, y_star,
-        u_names, v_names, w_names;
-        N0=N0, Ng=Ng, Nx_final=10_000,
-    )
-
+            gp, data, specs, qoi_type, direction, y_star,
+            u_names, v_names, w_names;
+            Nx_final=10_000,
+        )
+        
     μ_qoi_bound_final = result.μ_bound
     θ_bound           = result.θ_bound
 

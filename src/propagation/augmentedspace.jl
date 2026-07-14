@@ -145,9 +145,14 @@ function spec_names(specs::Vector{<:AbstractInputSpec})
     x_names = Symbol[]
 
     for (i, s) in enumerate(specs)
-        push!(x_names, Symbol("x$i"))
+        # FIX: use the spec's ACTUAL declared name (s.name), matching exactly
+        # what build_augmented_design uses to build phys_df (`phys_df[!, s.name] = ...`).
+        # The previous `Symbol("x$i")` synthesized a generic name that only ever
+        # happened to match by coincidence when variables were literally named
+        # x1, x2, ... -- any other declared name (e.g. :x, :stress, :theta)
+        # produced a silent mismatch against the real physical-space column names.
+        push!(x_names, s.name)
     end
-
 
     for (i, s) in enumerate(specs)
         if n_u_dims(s) == 1
@@ -165,12 +170,30 @@ function spec_names(specs::Vector{<:AbstractInputSpec})
             end
         end
     end
+
+    # Drop the numeric subscript when there's only ONE dimension of that
+    # kind overall -- no disambiguation is needed, regardless of how many
+    # specs are involved or which spec it came from. If a second u or v
+    # dimension is ever present, the numbered scheme is restored so each
+    # can still be distinguished.
+    if length(u_names) == 1
+        u_names = [:u]
+    end
+    if length(v_names) == 1
+        v_names = [:v]
+    end
+
     w_names = vcat(u_names, v_names)
     return x_names, w_names, u_names, v_names
 end
 
 # ==============================================================================
-# 8.  build_augmented_design — generalized for all three spec types
+# 8.  build_augmented_design — FIXED: sample θ from the TRUE epistemic bounds,
+#     use the RELAXED bounds only as the mapping formula's domain (θ_to_v),
+#     not as a sampling range. Previously, θ_samples (and, for IntervalSpec,
+#     the physical x itself) was drawn from the relaxed bounds directly,
+#     leaking outside the declared [θ_L, θ_U] interval -- exactly the
+#     ±3.22-vs-±3.14 discrepancy observed.
 # ==============================================================================
 function build_augmented_design(
     physical_model,
@@ -180,7 +203,8 @@ function build_augmented_design(
     y_symbol  :: Symbol = :y
 )
     # ── Collect epistemic dims across ALL specs for a single JOINT LHS ───────
-    relaxed_lbs, relaxed_ubs = Float64[], Float64[]
+    raw_lbs,     raw_ubs     = Float64[], Float64[]   # TRUE bounds -- θ is SAMPLED from these
+    relaxed_lbs, relaxed_ubs = Float64[], Float64[]   # relaxed bounds -- used ONLY inside θ_to_v
     spec_epi_range = Vector{UnitRange{Int}}(undef, length(specs))
     col = 0
     for (i, s) in enumerate(specs)
@@ -195,7 +219,8 @@ function build_augmented_design(
         v_Us = s isa IntervalSpec ? [s.v_U] : s.v_U
         for j in 1:k
             lb, ub = compute_relaxed_bounds(θ_Ls[j], θ_Us[j]; v_L=v_Ls[j], v_U=v_Us[j])
-            push!(relaxed_lbs, lb); push!(relaxed_ubs, ub)
+            push!(raw_lbs, θ_Ls[j]); push!(raw_ubs, θ_Us[j])
+            push!(relaxed_lbs, lb);  push!(relaxed_ubs, ub)
         end
         spec_epi_range[i] = (col+1):(col+k)
         col += k
@@ -203,13 +228,16 @@ function build_augmented_design(
     n_epi_total = col
 
     # Random.seed!(seed)
+
+    # FIX: sample over the TRUE bounds, not the relaxed ones.
     θ_samples = n_epi_total > 0 ?
-        QuasiMonteCarlo.sample(n_samples, relaxed_lbs, relaxed_ubs, LatinHypercubeSample())' :
-        # QuasiMonteCarlo.sample(n_samples, relaxed_lbs, relaxed_ubs, SobolSample())' :
+        QuasiMonteCarlo.sample(n_samples, raw_lbs, raw_ubs, LatinHypercubeSample())' :
         Matrix{Float64}(undef, n_samples, 0)
 
     v_samples = similar(θ_samples)
     for j in 1:n_epi_total
+        # mapping formula still uses the RELAXED bounds -- this is what
+        # makes θ_L/θ_U land exactly on v_L/v_U rather than on ±∞
         v_samples[:, j] = θ_to_v.(θ_samples[:, j], relaxed_lbs[j], relaxed_ubs[j])
     end
 
@@ -229,13 +257,13 @@ function build_augmented_design(
 
         elseif s isa IntervalSpec
             θ_col = spec_epi_range[i].start
-            x_samples[:, i] = θ_samples[:, θ_col]
+            x_samples[:, i] = θ_samples[:, θ_col]     # now correctly within [θ_L, θ_U]
 
         elseif s isa HybridSpec
             u_col += 1
             θ_cols = spec_epi_range[i]
             for row in 1:n_samples
-                θ_vec = θ_samples[row, θ_cols]
+                θ_vec = θ_samples[row, θ_cols]         # now correctly within [θ_L, θ_U]
                 dist  = make_dist(s, θ_vec)
                 x_ij  = rand(dist)
                 x_samples[row, i]     = x_ij
@@ -252,7 +280,6 @@ function build_augmented_design(
     if physical_model !== nothing
         UncertaintyQuantification.evaluate!(physical_model, phys_df)
         aug_df[!, y_symbol] = phys_df[!, y_symbol]
-
     end
 
     return aug_df, phys_df

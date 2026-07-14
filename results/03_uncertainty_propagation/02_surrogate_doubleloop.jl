@@ -21,63 +21,6 @@ print("Gaussian Mixture...\n")
 x_names, w_names, u_names, v_names = spec_names(specs)
 y_symbol = physical_model.name
 
-
-# # =======================================================================
-# # Step 2. Training the GP, PCE, PCK
-# # =======================================================================
-
-# n_samples = 10
-# data_aug_train, _ = build_augmented_design(physical_model, specs, n_samples)
-
-# n_pool = 1_000_000
-# data_aug_pool, _ = build_augmented_design(physical_model, specs, n_pool)
-
-
-
-# pce_p_max = 7
-# pck_p_max = 3
-
-# kernel_type = GPMatern52
-# bases = fill(SurrogateModelling.HermiteBasis(), length(w_names))
-# pce_solver = SurrogateModelling.LASSOSolver
-
-# pce_degree = QBall(pce_p_max, 0.5)
-# pck_degree = QBall(pck_p_max, 0.5)
-
-# gp          = SurrogateModelling.GaussianProcess(data_aug_train, y_symbol;          kernel_type=kernel_type())
-# pce         = SurrogateModelling.PolynomialChaosExpansion(data_aug_train, y_symbol, bases, pce_degree; solver=pce_solver())
-# pce_trend   = SurrogateModelling.PolynomialChaosExpansion(data_aug_train, y_symbol, bases, pck_degree; solver=pce_solver())
-# pck         = SurrogateModelling.PolynomialChaosKriging(data_aug_train, y_symbol,   pce_trend, kernel_type=kernel_type())
-
-# gp_fit_value,  gp_fit_time,  _... = @timed fit!(gp)
-# pce_fit_value, pce_fit_time, _... = @timed fit!(pce)
-# pck_fit_value, pck_fit_time, _... = @timed fit!(pck)
-
-# print("\n")
-
-# q2_gp   = q2_loo(df -> SurrogateModelling.GaussianProcess(df, y_symbol; kernel_type=kernel_type()),                            data_aug_train, y_symbol)
-# print("q2 gp done...\n")
-
-
-# q2_pce  = q2_loo(df -> SurrogateModelling.PolynomialChaosExpansion(df, y_symbol, bases, pce_degree; solver=pce_solver()),            data_aug_train, y_symbol)
-# print("q2 pce done...\n")
-
-
-# q2_pck  = q2_loo(df -> SurrogateModelling.PolynomialChaosKriging(df, y_symbol, pce_trend, kernel_type=kernel_type()),     data_aug_train, y_symbol)
-
-# print("\n")
-
-# print("n₀: $n_samples:\n")
-# print("Q² GP:  $(round(q2_gp, digits=3))\n")
-# print("Q² PCE: $(round(q2_pce, digits=3))\n")
-# print("Q² PCK: $(round(q2_pck, digits=3))\n")
-
-
-# gp_μ_pool,  gp_time_pool,  _...  = @timed predict(gp, Matrix(data_aug_pool[:, w_names]))
-# pce_μ_pool, pce_time_pool, _...  = @timed predict(pce, Matrix(data_aug_pool[:, w_names]))
-# pck_μ_pool, pck_time_pool, _...  = @timed predict(pck, Matrix(data_aug_pool[:, w_names]))
-
-
 function compare_surrogates_evolution(
     physical_model, 
     specs,
@@ -112,8 +55,8 @@ function compare_surrogates_evolution(
     return gps, pcks
 end
 
-# n_trains = [50, 100, 150, 200, 250, 300, 400, 500]
-n_trains = [30]
+n_trains = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+
 
 gps, pcks = compare_surrogates_evolution(
     physical_model, 
@@ -121,12 +64,11 @@ gps, pcks = compare_surrogates_evolution(
     n_trains,
 )
 
-
 function true_doubleloop(
     model, imprecise_inputs;
     n_total::Int, k, qoi::Symbol, y_star::Float64,
-    surrogate::Bool = false,
-    specs = nothing,
+    surrogate::Bool = false, specs = nothing,
+    batch_size::Int = 200,   # NEW: how many θ's aleatory grids to stack per predict() call
 )
     inputs = wrap(imprecise_inputs)
     imp  = filter(isimprecise, inputs)
@@ -145,8 +87,6 @@ function true_doubleloop(
         x_names, w_names, u_names, v_names = spec_names(specs)
         d_u, d_v = length(u_names), length(v_names)
 
-        # precompute the (lb, ub) relaxed-bounds pairs ONCE — these never
-        # depend on θ, only on the specs. Avoids recomputing them n_θ times.
         relaxed_bounds = Tuple{Float64,Float64}[]
         for s in specs
             if s isa IntervalSpec
@@ -158,46 +98,60 @@ function true_doubleloop(
             end
         end
 
-        print(relaxed_bounds)
+        # ── batched buffer: B θ's worth of aleatory rows stacked, ONE predict() per batch ──
+        X_batch = Matrix{Float64}(undef, batch_size * n_u, d_u + d_v)
 
-        # preallocate the aleatory+epistemic matrix ONCE, reused every iteration
-        X_buf = Matrix{Float64}(undef, n_u, d_u + d_v)
-    end
+        θ_batch = Matrix{Float64}(undef, batch_size, d)
 
-    for i in 1:n_θ
-        θ = lb .+ rand(d) .* (ub .- lb)
+        i = 1
+        while i <= n_θ
+            b_end = min(i + batch_size - 1, n_θ)
+            B = b_end - i + 1
 
-        if !surrogate
+            for (b, θi) in enumerate(i:b_end)
+                θ = lb .+ rand(d) .* (ub .- lb)
+                θ_array[θi, :] .= θ
+                θ_batch[b, :]   .= θ
+                rows = ((b-1)*n_u + 1):(b*n_u)
+                @views X_batch[rows, 1:d_u] .= randn(n_u, d_u)
+                for j in 1:d_v
+                    lb_j, ub_j = relaxed_bounds[j]
+                    @views X_batch[rows, d_u+j] .= θ_to_v(θ[j], lb_j, ub_j)
+                end
+            end
+
+            # ONE predict() call for the WHOLE batch, instead of B separate calls
+            X_view = Matrix(@view X_batch[1:(B*n_u), :])
+            y_batch = predict(model, X_view; mode=:mean)
+
+            for (b, θi) in enumerate(i:b_end)
+                rows = ((b-1)*n_u + 1):(b*n_u)
+                y_b = @view y_batch[rows]
+                qoi_vals[θi] = qoi == :mean ? mean(y_b) :
+                               qoi == :pf   ? mean(y_b .<= y_star) :
+                               error("Unknown QoI.")
+            end
+
+            i = b_end + 1
+        end
+    else
+        # unchanged physical-model branch
+        for i in 1:n_θ
+            θ = lb .+ rand(d) .* (ub .- lb)
             θ_inputs = map_to_precise_inputs(θ, imp)
             df = sample([prec..., θ_inputs...], n_u)
             evaluate!(model, df)
             y = df[:, model.name]
-        else
-            # write directly into X_buf instead of building a DataFrame
-            @views X_buf[:, 1:d_u] .= randn(n_u, d_u)
-            for j in 1:d_v
-                lb_j, ub_j = relaxed_bounds[j]
-                @views X_buf[:, d_u+j] .= θ_to_v(θ[j], lb_j, ub_j)
-            end
-            y = predict(model, X_buf; mode=:mean)   # matrix straight in, no DataFrame round-trip
+            qoi_vals[i] = qoi == :mean ? mean(y) : qoi == :pf ? mean(y .<= y_star) : error("Unknown QoI.")
+            θ_array[i, :] .= θ
         end
-
-        qoi_vals[i] =
-            qoi == :mean ? mean(y) :
-            qoi == :pf   ? mean(y .<= y_star) :
-            error("Unknown QoI.")
-        θ_array[i, :] .= θ
     end
 
-    imin = argmin(qoi_vals)
-    imax = argmax(qoi_vals)
-    return (
-        bounds   = [minimum(qoi_vals), maximum(qoi_vals)],
-        θ_bounds = [θ_array[imin, :], θ_array[imax, :]],
-        n_calls  = n_θ * n_u,
-    )
+    imin, imax = argmin(qoi_vals), argmax(qoi_vals)
+    return (bounds = [minimum(qoi_vals), maximum(qoi_vals)],
+            θ_bounds = [θ_array[imin, :], θ_array[imax, :]],
+            n_calls = n_θ * n_u)
 end
-
 
 
 # surrogate propagation — same call, two extra kwargs
@@ -205,7 +159,7 @@ end
 for (idx, n_train) in enumerate(n_trains)
     result_mean_gp = @time "gp mean: " true_doubleloop(
         gps[idx], [x1, x2];
-        n_total=1*10^6, k=5.0, qoi=:mean, y_star=-1.427,
+        n_total=1*10^7, k=5.0, qoi=:mean, y_star=-1.427,
         surrogate=true, specs=specs
     )
 
@@ -213,7 +167,7 @@ for (idx, n_train) in enumerate(n_trains)
 
     result_mean_pck = @time "pck mean: " true_doubleloop(
         pcks[idx], [x1, x2];
-        n_total=1*10^6, k=5.0, qoi=:mean, y_star=-1.427,
+        n_total=1*10^7, k=5.0, qoi=:mean, y_star=-1.427,
         surrogate=true, specs=specs
     )
 
@@ -221,22 +175,22 @@ for (idx, n_train) in enumerate(n_trains)
 
 
 
-    result_pf_gp = @time "gp pf: " true_doubleloop(
-        gps[idx], [x1, x2];
-        n_total=1*10^6, k=0.01, qoi=:pf, y_star=-1.427,
-        surrogate=true, specs=specs
-    )
+    # result_pf_gp = @time "gp pf: " true_doubleloop(
+    #     gps[idx], [x1, x2];
+    #     n_total=10^8, k=0.01, qoi=:pf, y_star=-1.427,
+    #     surrogate=true, specs=specs
+    # )
 
-    println("gp  (n₀ = $n_train): pf = $(round.(result_pf_gp.bounds, digits=3))")
+    # println("gp  (n₀ = $n_train): pf = $(round.(result_pf_gp.bounds, digits=3))")
 
 
-    result_pf_pck = @time "pck pf: " true_doubleloop(
-        pcks[idx], [x1, x2];
-        n_total=1*10^6, k=0.01, qoi=:pf, y_star=-1.427,
-        surrogate=true, specs=specs
-    )
+    # result_pf_pck = @time "pck pf: " true_doubleloop(
+    #     pcks[idx], [x1, x2];
+    #     n_total=10^8, k=0.01, qoi=:pf, y_star=-1.427,
+    #     surrogate=true, specs=specs
+    # )
 
-    println("pck (n₀ = $n_train): pf = $(round.(result_pf_pck.bounds, digits=3))\n")
+    # println("pck (n₀ = $n_train): pf = $(round.(result_pf_pck.bounds, digits=3))\n")
 
 
 end
