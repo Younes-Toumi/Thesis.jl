@@ -1,17 +1,13 @@
-# ============================================================
-# Abstract Kernel Interface
-# ============================================================
-# Every concrete kernel must implement:
-#   - default_θ(k, X, y)   → data-driven NamedTuple of constrained params
-#   - build_kernel(k, θ)   → KernelFunctions.jl kernel object
-#   - kernel_name(k)       → human-readable string
-#
-# Adding a new kernel = one new file, zero changes elsewhere.
-# ============================================================
+"""
+Abstract Kernel Interface. Every concrete kernel must implement:
+  - default_θ(k, X, y)   → data-driven NamedTuple of constrained params
+  - build_kernel(k, θ)   → KernelFunctions.jl kernel object
+  - kernel_name(k)       → human-readable string
+"""
 
 abstract type AbstractGPKernel end
 
-# ── Interface guards — clear error if a method is missing ─────
+# Interface guards
 function default_θ(k::AbstractGPKernel, ::Matrix, ::Vector)
     error("default_θ not implemented for kernel $(typeof(k)). ")
 end
@@ -23,12 +19,15 @@ end
 kernel_name(k::AbstractGPKernel) = string(typeof(k))  # fallback
 
 
-# ── Shared utilities used by all kernels ─────────────────────
+# Shared utilities used by all kernels
 
 """
     median_pairwise_distance(X::Matrix) -> Float64
+    min_pairwise_distance(X::Matrix) -> Float64
+    max_pairwise_distance(X::Matrix) -> Float64
 
-Computes the median Euclidean distance between all pairs of rows in X.
+
+Computes the median, min and max Euclidean distance between all pairs of rows in X.
 Used as a data-driven initialisation for the lengthscale hyperparameter.
 """
 function median_pairwise_distance(X::Matrix)
@@ -53,38 +52,32 @@ end
     default_ard_θ(X::Matrix, y::Vector) -> NamedTuple
 
 Returns the standard Automatic Relevance Determination (ARD) hyperparameter initialisation shared by
-stationary kernels (Matern32, Matern52, SqExponential):
+stationary kernels (Materns & SqExponential):
   - lengthscale: one per input dimension, initialised to median pairwise distance
   - variance:    initialised to var(y)
-  - noise:       initialised to 1% of var(y)
+  - noise:       initialised to 1e-7 (deterministic simulator)
 """
 function default_ard_θ(X::Matrix, y::Vector)
     d  = size(X, 2)
     σ² = var(y)
 
-    # l  = fill(median_pairwise_distance(X), d)
-    l = [median_pairwise_distance(X[:, j:j]) for j in 1:d]   # one ℓ per input
-    
+    l = [median_pairwise_distance(X[:, j:j]) for j in 1:d]   # one l per input    
 
-    l_min = 0.1 * min_pairwise_distance(X)      # blocks ℓ→0  (the cond=1.0 disasters)
-    l_max = max_pairwise_distance(X)      # blocks ℓ→∞  (the railed 1e8 values)
+    l_min = 0.1 * min_pairwise_distance(X)  # blocks l → 0
+    l_max = max_pairwise_distance(X)        # blocks l → ∞
 
     l = clamp.(l, l_min, l_max)
-    σ² = clamp.(σ², 1e-10, 1e10)
+    σ² = clamp.(σ², 1e-10, 1e10) # safeguad against σ² = 0
 
     return (
-        lengthscale = param_bounded(l, l_min, l_max),
-        variance    = param_bounded(σ², 1e-12, 1e12),
-        noise       = param_positive(1e-7),
+        lengthscale = ParameterHandling.bounded(l, l_min, l_max),
+        variance    = ParameterHandling.bounded(σ², 1e-12, 1e12),
+        noise       = ParameterHandling.positive(1e-7),
     )
 end
 
-# ── Parameter Constraints ────────────────────────────────────────────
-# Thin wrappers around ParameterHandling:
-#   1. param_positive:  Constrains a parameter to (0, ∞). Use for lengthscales, variances, noise.
-#   2. param_bounded:   Constrains a parameter to (lo, hi). Use for parameters with known mathematical bounds.
-#   3. param_free:      Unconstrained parameter, x ∈ (-∞, ∞)
-
-param_positive(x)        = ParameterHandling.positive(x)
-param_bounded(x, lo, hi) = ParameterHandling.bounded(x, lo, hi)
-param_free(x)            = x
+export 
+    build_kernel,
+    GPSquaredExponential, GPMatern52, GPMatern32, GPMatern12, GPCompositeKernel
+    kernel_name, default_θ, default_ard_θ, build_kernel,
+    median_pairwise_distance, min_pairwise_distance, max_pairwise_distance

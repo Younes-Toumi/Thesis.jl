@@ -1,90 +1,47 @@
-using UncertaintyQuantification
 using SurrogateModelling
+using UncertaintyQuantification
 using Random
 using DataFrames
-using ParameterHandling
-using LinearAlgebra
+
 Random.seed!(42)
 
-run(`clear`)
-
-# ============================================================
-# Inputs + Model
-# ============================================================
-x1 = RandomVariable.(Uniform(-5, 5), :x1)
-x2 = RandomVariable.(Uniform(-5, 5), :x2)
-X = [x1, x2]
-
-model = Model(
-    rv -> (rv.x1 .^ 2 .+ rv.x2 .- 11) .^ 2 .+ (rv.x1 .+ rv.x2 .^ 2 .- 7) .^ 2,
+physical_model = Model(
+    df -> (df.x1 .^ 2 .+ df.x2 .- 11) .^ 2 .+ (df.x1 .+ df.x2 .^ 2 .- 7) .^ 2,
     :y
-) # himmelblau
+)
 
-# ============================================================
-# Sampling for: 1. train and 2. test #
-# ============================================================
+# 1. defining parametric inputs:
+x1 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x1)
+x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x2)
 
-n_train, n_test = 100, 1000
+# 2. decoupling inputs:
+specs = InputSpec.([x1, x2])
+x_names, w_names, u_names, v_names = spec_names(specs)
+y_symbol = physical_model.name
 
-design_train = LatinHypercubeSampling(n_train)
-design_test = LatinHypercubeSampling(n_test)
+# 3. building dataframes
+n_train = 50
+data_aug_train, data_phys_train = build_augmented_design(physical_model, specs, n_train)
+data_aug_test, data_phys_test = build_augmented_design(physical_model, specs, 10000)
 
-data_train = sample(X, design_train)
-data_test = sample(X, design_test)
-
-evaluate!(model, data_train)
-evaluate!(model, data_test)
-
-X_names = [x.name for x in X]
-X_test = data_test[:, X_names]
-y_test = data_test[:, :y]
-
-# ============================================================
-# PCE Modelling Stuff
-# ============================================================
-# TODO: Automatic selection of bases depending on input distribution (or convert to sns)
-# TODO: Compute the total possible degree depending on the available training samples
-
-bases = [SurrogateModelling.LegendreBasis(), SurrogateModelling.LegendreBasis()] # can be automated based on input
-degree = TotalDegree(15) # can be automated based on availabel samples
-
-# λ sparcity penality: a compromise between approximation accuracy and model sparcity.
-
-metamodels = [
-    SurrogateModelling.PolynomialChaosExpansion(data_train, :y, bases, degree), # chooses Least Squares by default
-    SurrogateModelling.PolynomialChaosExpansion(data_train, :y, bases, degree; solver=SurrogateModelling.OLSSolver()), # or not
-    SurrogateModelling.PolynomialChaosExpansion(data_train, :y, bases, degree; solver=SurrogateModelling.LASSOSolver(λ=0.1)), # also the LASSO one
-    SurrogateModelling.PolynomialChaosExpansion(data_train, :y, bases, degree; solver=SurrogateModelling.LASSOSolver()) # automatic lambda selection
-]
-
-messages = [
-    "Normal PCE, default solver:",
-    "Normal PCE, OLS solver:",
-    "Sparce PCE, LASSO solver with specific λ:",
-    "Sparce PCE, LASSO solver with automatic λ:",
-]
-
-for (metamodel, message) in zip(metamodels, messages)
-    println("\n============================================================")
-    println("$message")
-    println("============================================================\n")
-
-    @time "fit!" fit!(metamodel)
-    global y_pred = @time "predict" predict(metamodel, X_test)
+W_aug_test = Matrix(data_aug_test[:, w_names])
+y_test = Vector(data_aug_test[:, y_symbol])
 
 
-    if solver_name(metamodel.solver) == "OLS"
-        println("\nOLS solver: n coeffs for λ = 0: $(size(metamodel.coeffs))\n")
-    end
-    if solver_name(metamodel.solver) == "LASSO"
-        println("\nLASSO solver: n coeffs for λ = $(round(metamodel.solver.λ, digits=4)): $(size(metamodel.coeffs))\n")
-    end
+p_max = 4
+bases = fill(SurrogateModelling.HermiteBasis(), length(w_names))
+degree = TotalDegree(p_max)
 
-    println("Nonzero elements: ", count(!iszero, metamodel.coeffs))
-    println("Zero elements: ", count(iszero, metamodel.coeffs))
 
-    println("\nmetrics:")
-    println("MSE:               $(round(mse(y_test, y_pred), digits=5))")
-    println("Q²:                $(round(q2(y_test, y_pred), digits=5))")
+# 4. training the metamodel
+pce = SurrogateModelling.PolynomialChaosExpansion(data_aug_train, y_symbol, bases, degree; solver=LASSOSolver())
+fit!(pce)
 
-end
+# 5. prediction capacity
+y_pred = predict(pce, W_aug_test) 
+
+rmse_val = rmse(y_test, y_pred)
+q2_val = q2(y_test, y_pred)
+
+println("PCE RMSE: $(round(rmse_val, digits=3))")
+println("PCE Q2: $(round(q2_val, digits=3))")

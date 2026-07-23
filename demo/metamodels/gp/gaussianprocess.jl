@@ -2,88 +2,40 @@ using SurrogateModelling
 using UncertaintyQuantification
 using Random
 using DataFrames
-using ParameterHandling
-using LinearAlgebra
+
 Random.seed!(42)
 
-
-# ============================================================
-# Inputs + Model
-# ============================================================
-x1 = RandomVariable.(Uniform(-5, 5), :x1)
-x2 = RandomVariable.(Uniform(-5, 5), :x2)
-X = [x1, x2]
-
-model = Model(
-    rv -> (rv.x1 .^ 2 .+ rv.x2 .- 11) .^ 2 .+ (rv.x1 .+ rv.x2 .^ 2 .- 7) .^ 2,
+physical_model = Model(
+    df -> (df.x1 .^ 2 .+ df.x2 .- 11) .^ 2 .+ (df.x1 .+ df.x2 .^ 2 .- 7) .^ 2,
     :y
-) # himmelblau
+)
 
-# ============================================================
-# Sampling for: 1. train and 2. test #
-# ============================================================
+# 1. defining parametric inputs:
+x1 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x1)
+x2 = RandomVariable(ProbabilityBox{Normal}(Dict(:μ => Interval(-1.5, 1.5), :σ => 0.1)), :x2)
 
-n_train, n_test = 100, 1000
+# 2. decoupling inputs:
+specs = InputSpec.([x1, x2])
+x_names, w_names, u_names, v_names = spec_names(specs)
+y_symbol = physical_model.name
 
-design_train = LatinHypercubeSampling(n_train)
-design_test = LatinHypercubeSampling(n_test)
+# 3. building dataframes
+n_train = 50
+data_aug_train, data_phys_train = build_augmented_design(physical_model, specs, n_train)
+data_aug_test, data_phys_test = build_augmented_design(physical_model, specs, 10000)
 
-data_train = sample(X, design_train)
-data_test = sample(X, design_test)
+W_aug_test = Matrix(data_aug_test[:, w_names])
+y_test = Vector(data_aug_test[:, y_symbol])
 
-evaluate!(model, data_train)
-evaluate!(model, data_test)
+# 4. training the metamodel
+gp = GaussianProcess(data_aug_train, y_symbol)
+fit!(gp)
 
-X_names = [x.name for x in X]
-X_test = data_test[:, X_names]
-y_test = data_test[:, :y]
+# 5. prediction capacity
+y_pred, y_pred_σ = predict(gp, W_aug_test) 
 
-# ============================================================
-# Scaling datasets
-# ============================================================
+rmse_val = rmse(y_test, y_pred)
+q2_val = q2(y_test, y_pred)
 
-pipeline = fit_pipeline(data_train, :y, MinMaxScaler, ZScoreScaler)
-
-# apply to any dataset
-data_train_scaled = SurrogateModelling.transform(pipeline, data_train, :y)
-data_test_scaled  = SurrogateModelling.transform(pipeline, data_test, :y)
-
-X_test_scaled = data_test_scaled[:, X_names]
-
-
-# ============================================================
-# Initial GP hyperparameters
-# ============================================================
-# TODO: revise automatic parameter selection
-metamodels = [
-    GaussianProcess(data_train_scaled, :y),
-    GaussianProcess(data_train_scaled, :y;  mean=GPConstMean()),
-    GaussianProcess(data_train_scaled, :y;  kernel=GPMatern52()), 
-    GaussianProcess(data_train_scaled, :y;  kernel=0.25*GPMatern52() + 0.75*GPSquaredExponential()), # GPMatern52() * GPSquaredExponential() works too
-]
-
-messages = [
-    "Normal GP: default mean (zero) and kernel (squared exponential)",
-    "Normal GP: with constant mean instead of zeromean",
-    "Normal GP: with GPMatern52 kernel",
-    "Normal GP: with composite kernel"
-]
-
-for (metamodel, message) in zip(metamodels, messages)
-    println("\n============================================================")
-    println("$message")
-    println("============================================================\n")
-
-    @time "fit!" fit!(metamodel)
-    μ_scaled, σ_scaled = @time "predict" predict(metamodel, Matrix(X_test_scaled))
-
-    μ = SurrogateModelling.inverse_mean(pipeline, μ_scaled)
-    σ = sqrt.(SurrogateModelling.inverse_variance(pipeline, σ_scaled.^2))
-
-
-    global y_pred = μ
-
-    println("MSE:               $(round(mse(y_test, y_pred), digits=5))")
-    println("Q²:                $(round(q2(y_test, y_pred), digits=5))")
-
-end
+println("GP RMSE: $(round(rmse_val, digits=3))")
+println("GP Q2: $(round(q2_val, digits=3))")

@@ -15,9 +15,9 @@ model = Model(
 )
 
 # ── Sampling ──────────────────────────────────────────────────────
-design_train = LatinHypercubeSampling(100)
+design_train = LatinHypercubeSampling(1000)
 data_train   = sample(X, design_train)
-evaluate!(model, data_train)
+UncertaintyQuantification.evaluate!(model, data_train)
 
 x_names = propertynames(data_train[:, Not(:y)])
 

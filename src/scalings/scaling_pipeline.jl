@@ -64,3 +64,8 @@ end
 function inverse_variance(p::ScalingPipeline, σ2::Vector)
     return variance_transform(p.output_scaler, σ2)
 end
+
+export 
+    MinMaxScaler, ZScoreScaler, 
+    fit_pipeline, transform_input, transform_output, transform,
+    inverse_mean, inverse_variance

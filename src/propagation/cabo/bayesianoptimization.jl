@@ -8,3 +8,7 @@ function ei_objective(qoi_buffer, W_buffer, gp_samples!, n_u, qoi_type, v, μ_qo
     L_bo = mean(x -> max(sign_dir * (μ_qoi_star - x), 0.0), qoi_buffer)
     return -L_bo
 end
+
+export
+    ei_objective
+    

@@ -70,3 +70,8 @@ function multivariate_indices(deg::AbstractPCEDegree, d::Int)
 
     return index_set
 end
+
+
+export
+    TotalDegree, TensorProduct, HyperbolicCross, QBall,
+    n_terms, degree_name, multivariate_indices

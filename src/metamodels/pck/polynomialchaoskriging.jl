@@ -1,6 +1,3 @@
-# ============================================================
-# Polynomial Chaos Kriging (Sequential)
-# ============================================================
 """
     PolynomialChaosKriging <: UQModel
 
@@ -16,8 +13,7 @@ GP captures whatever local/non-polynomial structure is left over, and
 supplies the model's predictive variance (the PCE trend itself is treated
 as deterministic once fit, so it contributes zero variance).
 
-This is the "sequential" PCK from Schöbi, Sudret & Wiart (2015) — the PCE
-basis is selected once, up front, using ordinary PCE regression; it is
+The PCE basis is selected once, up front, using ordinary PCE regression; it is
 NOT re-optimised against the Kriging covariance structure (that would be
 "optimal" PCK, a more expensive iterative variant).
 
@@ -27,16 +23,16 @@ NOT re-optimised against the Kriging covariance structure (that would be
 - `x_names::Vector{Symbol}`: Input column names
 - `y_symbol::Symbol`: Output column name
 - `pce::PolynomialChaosExpansion`: The trend model (construct and configure
-  this yourself — degree/basis/solver — exactly as you would for standalone PCE)
+this yourself — degree/basis/solver — exactly as you would for standalone PCE)
+
 - `gp_residual::Union{GaussianProcess,Nothing}`: The residual model, built
-  internally during `fit!`; `nothing` until then
+internally during `fit!`; `nothing` until then
+
 - `kernel_type::AbstractGPKernel`: Kernel for the residual GP
 - `mean_type::AbstractGPMean`: Mean function for the residual GP (defaults
-  to `GPZeroMean()` — see Notes)
-- `learn_noise::Bool`: Forwarded to the residual GP
+to `GPZeroMean()` — see Notes)
 
-# See also
-[`fit!`](@ref), [`predict`](@ref), [`refit!`](@ref)
+- `learn_noise::Bool`: Forwarded to the residual GP
 """
 mutable struct PolynomialChaosKriging <: UQModel
     X::Matrix{Float64}
@@ -52,9 +48,6 @@ mutable struct PolynomialChaosKriging <: UQModel
     learn_noise::Bool
 end
 
-# ============================================================
-# Constructor
-# ============================================================
 """
     PolynomialChaosKriging(data, y_symbol, pce; kernel_type, mean_type, learn_noise)
 
@@ -64,20 +57,23 @@ Construct a sequential PCK surrogate.
 - `data::DataFrame`: Training dataset (inputs + `y_symbol` column)
 - `y_symbol::Symbol`: Name of the output column
 - `pce::PolynomialChaosExpansion`: An UNFITTED PCE object, already
-  constructed on the SAME `(data, y_symbol)` with whatever degree/basis/
-  solver settings you want — PCK does not choose these for you, it just
-  orchestrates fitting
+constructed on the SAME `(data, y_symbol)` with whatever degree/basis/
+solver settings you want — PCK does not choose these for you, it just
+orchestrates fitting
 
 # Keyword Arguments
 - `kernel_type::AbstractGPKernel`: Kernel for the residual GP. Defaults to `GPMatern52()`
 - `mean_type::AbstractGPMean`: Mean function for the residual GP. Defaults
-  to `GPZeroMean()` — see Notes for why this should generally stay zero
+to `GPZeroMean()` — see Notes for why this should generally stay zero
 - `learn_noise::Bool`: Forwarded to the residual GP. Defaults to `false`
 
 # Examples
 ```julia
 pce = PolynomialChaosExpansion(data_train, :y;
-    degree_type = TotalDegree(5), basis_type = LegendreBasis(), solver_type = LASSOSolver())
+    degree_type = TotalDegree(5), 
+    basis_type = [LegendreBasis(), LegendreBasis()], 
+    solver_type = LASSOSolver()
+)
 
 pck = PolynomialChaosKriging(data_train, :y, pce; kernel_type = GPMatern52())
 fit!(pck)
@@ -86,11 +82,12 @@ fit!(pck)
 
 # Notes
 - `mean_type` defaults to `GPZeroMean()` deliberately: any constant offset
-  the data needs should already be absorbed by the PCE's own degree-0 term.
-  Giving the residual GP a non-zero mean on top of that is redundant and
-  can make the two trend components fight each other during fitting.
+the data needs should already be absorbed by the PCE's own degree-0 term.
+Giving the residual GP a non-zero mean on top of that is redundant and
+can make the two trend components fight each other during fitting.
+
 - `pce` must be built on the SAME training data you pass here. PCK does not
-  re-slice or re-sample it.
+re-slice or re-sample it.
 """
 function PolynomialChaosKriging(
     data::DataFrame,
@@ -111,9 +108,11 @@ function PolynomialChaosKriging(
     )
 end
 
-# ============================================================
-# Training
-# ============================================================
+
+model_name(pck::PolynomialChaosKriging) =
+    "PCK (PCE trend + $(kernel_name(pck.kernel_type)) residual)"
+
+
 """
     fit!(pck::PolynomialChaosKriging)
 
@@ -128,24 +127,14 @@ Fit the PCK in two sequential steps:
 - `pck`: The same object, now with `pck.pce` and `pck.gp_residual` both fitted
 
 # Notes
-- Both sub-fits reuse the existing, already-robust `fit!` implementations
-  for `PolynomialChaosExpansion` and `GaussianProcess` — PCK adds no new
-  optimisation logic of its own, only the trend/residual orchestration
+- Both sub-fits reuse the existing `fit!` implementations
+for `PolynomialChaosExpansion` and `GaussianProcess` — PCK adds no new
+optimisation logic of its own, only the trend/residual orchestration
 
-# References
-- Schöbi, R., Sudret, B., & Wiart, J. (2015). Polynomial-chaos-based
-  Kriging. International Journal for Uncertainty Quantification, 5(2).
-
-# See also
-[`predict`](@ref), [`refit!`](@ref)
 """
 function fit!(pck::PolynomialChaosKriging)
     # 1. Fit the trend
     fit!(pck.pce)
-
-    # ASSUMPTION: predict(::PolynomialChaosExpansion, ::Matrix{Float64}) returns
-    # a single Vector{Float64} (no variance — PCE point predictions only).
-    # If your PCE predict signature differs, adjust this one line.
     μ_pce_train = predict(pck.pce, pck.X)
 
     # 2. Residuals = what the trend didn't capture
@@ -166,9 +155,6 @@ function fit!(pck::PolynomialChaosKriging)
     return pck
 end
 
-# ============================================================
-# Prediction
-# ============================================================
 """
     predict(pck::PolynomialChaosKriging, Xnew::Matrix{Float64}; mode=:mean_and_var) -> (μ, σ)
 
@@ -185,37 +171,32 @@ fit!(pck)
 μ, σ = predict(pck, X_new)
 μ_only = predict(pck, X_new; mode=:mean)
 ```
-
-# See also
-[`fit!`](@ref)
 """
-function predict(pck::PolynomialChaosKriging, Xnew::Matrix{Float64}; mode::Symbol = :mean_and_var)
+function predict(pck::PolynomialChaosKriging, Xnew::Matrix{Float64}; mode::Symbol = :mean_and_var, n_samples:: Int = 1)
     pck.gp_residual === nothing && error("PCK has not been trained yet. Call fit!(pck) first.")
 
-    μ_pce = predict(pck.pce, Xnew)   # ASSUMPTION: single Vector{Float64} return — see fit! note above
+    μ_pce = predict(pck.pce, Xnew)
 
-    if mode == :mean_and_var
-        μ_resid, σ_resid = predict(pck.gp_residual, Xnew; mode = :mean_and_var)
-        return μ_pce .+ μ_resid, σ_resid
-
-    elseif mode == :mean
+    if mode === :mean
         μ_resid = predict(pck.gp_residual, Xnew; mode = :mean)
         return μ_pce .+ μ_resid
 
+    elseif mode === :var
+        var_resid = predict(pck.gp_residual, Xnew; mode = :var)
+        return var_resid
+    elseif mode === :mean_and_var
+        μ_resid, σ_resid = predict(pck.gp_residual, Xnew; mode = :mean_and_var)
+        return μ_pce .+ μ_resid, σ_resid
+
+    elseif mode === :sample
+        μ_sample_resid = predict(pck.gp_residual, Xnew; mode = :sample, n_samples=n_samples)
+        return μ_pce .+ μ_sample_resid
+    
     else
-        return nothing
+        throw(ArgumentError("Unknown mode: $mode. Choose :mean, :var, :mean_and_var, or :sample."))
     end
 end
 
-# ============================================================
-# Descriptive name (matches kernel_name / mean_name convention)
-# ============================================================
-model_name(pck::PolynomialChaosKriging) =
-    "PCK (PCE trend + $(kernel_name(pck.kernel_type)) residual)"
-
-# ============================================================
-# OPTIONAL — refit! for adaptive-design / CABO-style workflows
-# ============================================================
 """
     refit!(pck::PolynomialChaosKriging, X_new, y_new)
 
@@ -243,7 +224,7 @@ function refit!(pck::PolynomialChaosKriging, X_new::AbstractMatrix{Float64}, y_n
     pck.X = vcat(pck.X, X_new)
     pck.y = vcat(pck.y, y_new)
 
-    μ_pce_new = predict(pck.pce, X_new)     # PCE trend stays fixed — just evaluate it at the new points
+    μ_pce_new = predict(pck.pce, X_new)     # PCE trend stays fixed - just evaluate it at the new points
     residual_new = y_new .- μ_pce_new
 
     refit!(pck.gp_residual, X_new, residual_new)   # warm-started GP refit, as already implemented
@@ -251,13 +232,92 @@ function refit!(pck::PolynomialChaosKriging, X_new::AbstractMatrix{Float64}, y_n
     return pck
 end
 
+
+
+"""
+    evaluate!(pck, data; mode=:mean, n_samples=1)
+
+Compute PCK predictions and write the results as new columns into `data` in-place.
+
+A thin wrapper around `predict`, all computation happens there; this
+function only extracts the input matrix, calls `predict`, and writes the
+result into the appropriate column(s) of `data`. Keeping the two in sync this
+way means there is exactly one implementation of the actual PCK query logic.
+
+The output column names are derived from `pck.y_symbol`:
+- `:mean`         -> adds `y_mean`  (writes to `pck.y_symbol` directly, per original convention)
+- `:var`          -> adds `y_var`
+- `:mean_and_var` -> adds both `y_mean` and `y_var`
+- `:sample`       -> adds `y_sample_1`, `y_sample_2`, ... for `n_samples` draws
+
+# Arguments
+- `pck::PolynomialChaosKriging`: A fitted PCK model
+- `data::DataFrame`: Dataset to predict on. Modified in-place. Must contain the input columns
+
+# Keyword Arguments
+- `mode::Symbol`: What to compute. One of `:mean`, `:var`, `:mean_and_var`, `:sample`.
+- `n_samples::Int`: Number of posterior samples to draw. Only used when `mode = :sample`.
+
+# Returns
+- `nothing` - results are written directly into `data`
+
+# Examples
+```julia
+fit!(pck)
+
+evaluate!(pck, df)                                  # adds :y (mean)
+evaluate!(pck, df; mode=:mean_and_var)              # adds :y_mean and :y_var
+evaluate!(pck, df; mode=:sample, n_samples=50)      # adds :y_sample_1 … :y_sample_50
+```
+
+# Notes
+- Prefer `evaluate!` over `predict` when you want to keep predictions attached
+  to the original dataset for downstream analysis or export
+
+- `:mean_and_var` internally requests `predict(...; mode=:mean_and_var)` (which
+returns std, per its own convention) and squares it back to variance for the
+`_var` column
+
+"""
 function evaluate!(
-    pck::PolynomialChaosKriging,
-    data::DataFrame
+    pck       ::PolynomialChaosKriging,
+    data      ::Union{DataFrame, DataFrameRow};
+    mode      ::Symbol = :mean,
+    n_samples ::Int    = 1,
 )
-    y_pred = predict(pck, Matrix(data[:, pck.x_names]), mode=:mean)
+    pck.gp_residual === nothing && error("Call fit!(pck) before evaluate!.")
 
-    data[!, pck.y_symbol] = y_pred
+    Xmat = Matrix(data[:, pck.x_names])
 
-    return data
+    col_mean = pck.y_symbol
+    col_var  = Symbol(string(pck.y_symbol, "_var"))
+
+    if mode === :mean
+        data[!, pck.y_symbol] = predict(pck, Xmat; mode=:mean)
+
+    elseif mode === :var
+        data[!, col_var] = predict(pck, Xmat; mode=:var)
+
+    elseif mode === :mean_and_var
+        μ, σ = predict(pck, Xmat; mode=:mean_and_var)
+        data[!, col_mean] = μ
+        data[!, col_var]  = σ .^ 2      # square back to variance for the "_var" column
+
+    elseif mode === :sample
+        samples = predict(pck, Xmat; mode=:sample, n_samples=n_samples)
+        for i in 1:n_samples
+            col = Symbol(string(pck.y_symbol, "_sample_", i))
+            data[!, col] = samples[:, i]
+        end
+
+    else
+        throw(ArgumentError("Unknown mode: $mode. Choose :mean, :var, :mean_and_var, or :sample."))
+    end
+
+    return nothing
 end
+
+
+export 
+    PolynomialChaosKriging,
+    fit!, refit!, predict, evaluate!

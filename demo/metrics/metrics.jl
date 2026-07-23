@@ -7,7 +7,7 @@ Random.seed!(42)
 # ── Variables & Model ─────────────────────────────────────────────
 
 y_true = rand(Normal(0.0, 1.0), 1001)
-y_pred = y_true .+ 0.1rand()
+y_pred = y_true .+ 0.1*rand()
 
 mse_val     = mse(y_true, y_pred)
 rmse_val    = rmse(y_true, y_pred)

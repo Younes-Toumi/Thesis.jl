@@ -32,8 +32,8 @@ design_test  = MonteCarlo(n_test)
 data_train = sample(X, design_train)
 data_test  = sample(X, design_test)
 
-evaluate!(model, data_train)
-evaluate!(model, data_test)
+UncertaintyQuantification.evaluate!(model, data_train)
+UncertaintyQuantification.evaluate!(model, data_test)
 
 # ---------------------------------------------------------
 # Prediction grid

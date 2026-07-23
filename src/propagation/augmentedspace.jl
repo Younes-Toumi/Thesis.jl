@@ -10,7 +10,7 @@ function compute_relaxed_bounds(θ_L::Real, θ_U::Real; v_L::Real=-2.2, v_U::Rea
 end
 
 # ==============================================================================
-# 2.  θ ↔ v   and   3.  x ↔ u    (unchanged)
+# 2.  θ ↔ v   and   3.  x ↔ u
 # ==============================================================================
 θ_to_v(θ, lb, ub) = Φ⁻¹((θ - lb) / (ub - lb))
 v_to_θ(v, lb, ub) = lb + (ub - lb) * Φ(v)
@@ -61,6 +61,16 @@ n_v_dims(::PreciseSpec)  = 0
 n_v_dims(::IntervalSpec) = 1
 n_v_dims(s::HybridSpec)  = length(s.param_names)
 
+# SIMPLIFICATION: one small dispatched accessor per spec type, replacing the
+# repeated `s isa IntervalSpec ? [s.θ_L] : s.θ_L`-style branches that were
+# previously re-derived independently in build_augmented_design,
+# augmented_to_physical, augmented_to_epistemic, and build_bounds. Every
+# consumer below now goes through this single definition -- adding a new
+# spec type only requires one new method here, not four separate edits.
+epistemic_params(::PreciseSpec)   = (θ_L=Float64[], θ_U=Float64[], v_L=Float64[], v_U=Float64[])
+epistemic_params(s::IntervalSpec) = (θ_L=[s.θ_L],   θ_U=[s.θ_U],   v_L=[s.v_L],   v_U=[s.v_U])
+epistemic_params(s::HybridSpec)   = (θ_L=s.θ_L,     θ_U=s.θ_U,     v_L=s.v_L,     v_U=s.v_U)
+
 # ==============================================================================
 # 5.  Backward-compatible InputSpec(...) constructor — OLD calling convention
 #     InputSpec(-1.5, 1.5, nothing)              → IntervalSpec
@@ -106,10 +116,8 @@ function InputSpec(pb::ProbabilityBox{D}, name::Symbol; v_L=-2.2, v_U=2.2) where
     fixed_params = Dict{Symbol,Float64}()
     θ_L, θ_U     = Float64[], Float64[]
 
-    # TODO: when there is just one input it should be named x1, if its named x it will raise and error.
-
     for (k, val) in pb.parameters
-        if val isa Interval                               
+        if val isa Interval
             push!(epi_names, k)
             push!(θ_L, Float64(val.lb)); push!(θ_U, Float64(val.ub))   # CHECK: `.lb`, `.ub`
         else
@@ -138,6 +146,7 @@ end
 
 # ==============================================================================
 # 7.  Column-name bookkeeping  (flat u1,u2,...,v1,v2,... — matches your convention)
+#     SIMPLIFICATION: single pass over specs instead of three separate loops.
 # ==============================================================================
 function spec_names(specs::Vector{<:AbstractInputSpec})
     u_names = Symbol[]
@@ -145,22 +154,12 @@ function spec_names(specs::Vector{<:AbstractInputSpec})
     x_names = Symbol[]
 
     for (i, s) in enumerate(specs)
-        # FIX: use the spec's ACTUAL declared name (s.name), matching exactly
-        # what build_augmented_design uses to build phys_df (`phys_df[!, s.name] = ...`).
-        # The previous `Symbol("x$i")` synthesized a generic name that only ever
-        # happened to match by coincidence when variables were literally named
-        # x1, x2, ... -- any other declared name (e.g. :x, :stress, :theta)
-        # produced a silent mismatch against the real physical-space column names.
-        push!(x_names, s.name)
-    end
+        push!(x_names, s.name)   # actual declared name, matching phys_df's real columns
 
-    for (i, s) in enumerate(specs)
         if n_u_dims(s) == 1
             push!(u_names, Symbol("u$i"))
         end
-    end
 
-    for (i, s) in enumerate(specs)
         k = n_v_dims(s)
         if k == 1
             push!(v_names, Symbol("v$i"))
@@ -188,12 +187,11 @@ function spec_names(specs::Vector{<:AbstractInputSpec})
 end
 
 # ==============================================================================
-# 8.  build_augmented_design — FIXED: sample θ from the TRUE epistemic bounds,
-#     use the RELAXED bounds only as the mapping formula's domain (θ_to_v),
-#     not as a sampling range. Previously, θ_samples (and, for IntervalSpec,
-#     the physical x itself) was drawn from the relaxed bounds directly,
-#     leaking outside the declared [θ_L, θ_U] interval -- exactly the
-#     ±3.22-vs-±3.14 discrepancy observed.
+# 8.  build_augmented_design — samples θ from the TRUE epistemic bounds, uses
+#     the RELAXED bounds only as the mapping formula's domain (θ_to_v), not as
+#     a sampling range (previously leaked outside [θ_L, θ_U] -- the
+#     ±3.22-vs-±3.14 issue). SIMPLIFICATION: uses epistemic_params instead of
+#     re-deriving θ_L/θ_U/v_L/v_U inline; PreciseSpec sampling vectorized.
 # ==============================================================================
 function build_augmented_design(
     physical_model,
@@ -208,19 +206,16 @@ function build_augmented_design(
     spec_epi_range = Vector{UnitRange{Int}}(undef, length(specs))
     col = 0
     for (i, s) in enumerate(specs)
-        k = n_v_dims(s)
+        ep = epistemic_params(s)
+        k  = length(ep.θ_L)
         if k == 0
             spec_epi_range[i] = 1:0
             continue
         end
-        θ_Ls = s isa IntervalSpec ? [s.θ_L] : s.θ_L
-        θ_Us = s isa IntervalSpec ? [s.θ_U] : s.θ_U
-        v_Ls = s isa IntervalSpec ? [s.v_L] : s.v_L
-        v_Us = s isa IntervalSpec ? [s.v_U] : s.v_U
         for j in 1:k
-            lb, ub = compute_relaxed_bounds(θ_Ls[j], θ_Us[j]; v_L=v_Ls[j], v_U=v_Us[j])
-            push!(raw_lbs, θ_Ls[j]); push!(raw_ubs, θ_Us[j])
-            push!(relaxed_lbs, lb);  push!(relaxed_ubs, ub)
+            lb, ub = compute_relaxed_bounds(ep.θ_L[j], ep.θ_U[j]; v_L=ep.v_L[j], v_U=ep.v_U[j])
+            push!(raw_lbs, ep.θ_L[j]); push!(raw_ubs, ep.θ_U[j])
+            push!(relaxed_lbs, lb);    push!(relaxed_ubs, ub)
         end
         spec_epi_range[i] = (col+1):(col+k)
         col += k
@@ -229,7 +224,7 @@ function build_augmented_design(
 
     # Random.seed!(seed)
 
-    # FIX: sample over the TRUE bounds, not the relaxed ones.
+    # Sample over the TRUE bounds, not the relaxed ones.
     θ_samples = n_epi_total > 0 ?
         QuasiMonteCarlo.sample(n_samples, raw_lbs, raw_ubs, LatinHypercubeSample())' :
         Matrix{Float64}(undef, n_samples, 0)
@@ -249,21 +244,19 @@ function build_augmented_design(
     for (i, s) in enumerate(specs)
         if s isa PreciseSpec
             u_col += 1
-            for row in 1:n_samples
-                x_ij = rand(s.dist)
-                x_samples[row, i]     = x_ij
-                u_samples[row, u_col] = x_to_u(x_ij, s.dist)
-            end
+            # vectorized -- s.dist is fixed, no per-row dependency
+            x_samples[:, i]     = rand(s.dist, n_samples)
+            u_samples[:, u_col] = x_to_u.(x_samples[:, i], s.dist)
 
         elseif s isa IntervalSpec
             θ_col = spec_epi_range[i].start
-            x_samples[:, i] = θ_samples[:, θ_col]     # now correctly within [θ_L, θ_U]
+            x_samples[:, i] = θ_samples[:, θ_col]     # correctly within [θ_L, θ_U]
 
         elseif s isa HybridSpec
             u_col += 1
             θ_cols = spec_epi_range[i]
             for row in 1:n_samples
-                θ_vec = θ_samples[row, θ_cols]         # now correctly within [θ_L, θ_U]
+                θ_vec = θ_samples[row, θ_cols]         # correctly within [θ_L, θ_U]
                 dist  = make_dist(s, θ_vec)
                 x_ij  = rand(dist)
                 x_samples[row, i]     = x_ij
@@ -286,7 +279,12 @@ function build_augmented_design(
 end
 
 # ==============================================================================
-# 9.  augmented_to_physical / augmented_to_epistemic — generalized
+# 9.  augmented_to_physical / augmented_to_epistemic / build_bounds
+#     SIMPLIFICATION: all three now go through epistemic_params instead of
+#     re-deriving θ_L/θ_U/v_L/v_U inline per spec type. As a side effect,
+#     augmented_to_epistemic's IntervalSpec/HybridSpec branches merge into one,
+#     since epistemic_params makes both look like "a vector of epistemic dims"
+#     (length 1 for IntervalSpec, length K for HybridSpec).
 # ==============================================================================
 function augmented_to_physical(w, specs::Vector{<:AbstractInputSpec})
     x_names, w_names, u_names, v_names = spec_names(specs)
@@ -302,16 +300,18 @@ function augmented_to_physical(w, specs::Vector{<:AbstractInputSpec})
 
         elseif s isa IntervalSpec
             v_idx += 1
-            lb, ub = compute_relaxed_bounds(s.θ_L, s.θ_U; v_L=s.v_L, v_U=s.v_U)
+            ep = epistemic_params(s)
+            lb, ub = compute_relaxed_bounds(ep.θ_L[1], ep.θ_U[1]; v_L=ep.v_L[1], v_U=ep.v_U[1])
             x[i]  = v_to_θ(v_vec[v_idx], lb, ub)
 
         elseif s isa HybridSpec
             u_idx += 1
+            ep = epistemic_params(s)
             k = length(s.param_names)
             θ_vec = Vector{Float64}(undef, k)
             for j in 1:k
                 v_idx += 1
-                lb, ub = compute_relaxed_bounds(s.θ_L[j], s.θ_U[j]; v_L=s.v_L[j], v_U=s.v_U[j])
+                lb, ub = compute_relaxed_bounds(ep.θ_L[j], ep.θ_U[j]; v_L=ep.v_L[j], v_U=ep.v_U[j])
                 θ_vec[j] = v_to_θ(v_vec[v_idx], lb, ub)
             end
             dist = make_dist(s, θ_vec)
@@ -325,37 +325,34 @@ function augmented_to_epistemic(v, specs::Vector{<:AbstractInputSpec})
     θ_all = Float64[]
     v_idx = 0
     for s in specs
-        if s isa IntervalSpec
+        ep = epistemic_params(s)
+        for j in eachindex(ep.θ_L)   # empty for PreciseSpec -- contributes nothing, no branch needed
             v_idx += 1
-            lb, ub = compute_relaxed_bounds(s.θ_L, s.θ_U; v_L=s.v_L, v_U=s.v_U)
+            lb, ub = compute_relaxed_bounds(ep.θ_L[j], ep.θ_U[j]; v_L=ep.v_L[j], v_U=ep.v_U[j])
             push!(θ_all, v_to_θ(v[v_idx], lb, ub))
-        elseif s isa HybridSpec
-            for j in 1:length(s.param_names)
-                v_idx += 1
-                lb, ub = compute_relaxed_bounds(s.θ_L[j], s.θ_U[j]; v_L=s.v_L[j], v_U=s.v_U[j])
-                push!(θ_all, v_to_θ(v[v_idx], lb, ub))
-            end
         end
-        # PreciseSpec contributes nothing — it has no epistemic component
     end
     return θ_all
 end
 
-
 function build_bounds(specs::Vector{<:AbstractInputSpec})
     lb_u, ub_u = Float64[], Float64[]
     lb_v, ub_v = Float64[], Float64[]
- 
+
     for s in specs
         if n_u_dims(s) == 1
             push!(lb_u, -4.0); push!(ub_u, 4.0)   # effective N(0,1) support — invariant across spec types
         end
-        if s isa IntervalSpec
-            push!(lb_v, s.v_L); push!(ub_v, s.v_U)
-        elseif s isa HybridSpec
-            append!(lb_v, s.v_L); append!(ub_v, s.v_U)
-        end
+        ep = epistemic_params(s)
+        append!(lb_v, ep.v_L); append!(ub_v, ep.v_U)   # no-op for PreciseSpec (empty vectors)
     end
- 
+
     return Metaheuristics.boxconstraints(lb=lb_u, ub=ub_u), Metaheuristics.boxconstraints(lb=lb_v, ub=ub_v)
 end
+
+
+export
+    make_dist, epistemic_params,
+    compute_relaxed_bounds, θ_to_v, v_to_θ, x_to_u, u_to_x, n_v_dims, n_u_dims,
+    AbstractInputSpec, PreciseSpec, IntervalSpec, HybridSpec, InputSpec,
+    spec_names, build_augmented_design, augmented_to_physical, augmented_to_epistemic, build_bounds

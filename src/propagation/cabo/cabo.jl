@@ -1,10 +1,3 @@
-function make_pso(; N::Int=50, ω=0.8, C1=2.0, C2=2.0)
-    p = Metaheuristics.PSO(N=N, ω=ω, C1=C1, C2=C2)
-    p.options.iterations = 200
-    return p
-end
-
-
 function estimate_qoi!(qoi_buffer, qoi_type, gp_samples!, W_buffer, n_u, v; y_star = nothing)
     @inbounds for j in eachindex(v)
         for i in axes(W_buffer, 1)
@@ -32,25 +25,6 @@ function best_candidate(qoi_type, gp_samples!, qoi_buffer, W_buffer, n_u, v_data
     return idx, μ_qoi, σ_qoi
 end
 
-# ==============================================================================
-# Updated call site — Nx must now be passed explicitly so the buffers can be
-# sized correctly up front
-# ==============================================================================
-#=
-gp_samples = build_kl_sampler(gp, Matrix(W_aug), X_train; N_samples=Ng, Nx=Nx)
-=#
-
-# ==============================================================================
-# estimate_qoi — unchanged from the previous round of fixes; gp_samples now
-# does ALL the qoi-aware reduction internally, including the in-place version
-# ==============================================================================
-# function estimate_qoi(qoi_type, gp_samples, u_samples, v)
-#     Nx = size(u_samples, 1)
-#     X  = hcat(u_samples, repeat(v', Nx, 1))
-#     return gp_samples(X; qoi_type=qoi_type)
-# end
-
-
 function estimate_propagation_qoi(qoi_type, gp_samples!, qoi_buffer, W_buffer, n_u, v; y_star = nothing)
     estimate_qoi!(qoi_buffer, qoi_type, gp_samples!, W_buffer, n_u, v; y_star)
     return mean(qoi_buffer), std(qoi_buffer)
@@ -65,8 +39,8 @@ function estimate_final_bound(
     n_u = length(u_names)
     n_v = length(v_names)
 
-    W_aug_final, _ = build_augmented_design(nothing, specs, Nx_final)
-    u_final        = Matrix(W_aug_final[:, u_names])
+    u_final        = randn(Nx_final, n_u)
+
 
     v_data = Matrix(data[:, v_names])
     n_candidates = size(v_data, 1)
@@ -96,20 +70,21 @@ function cabo_loop(
     physical_model,
     gp_init,
     data_aug_train,
-    y_symbol,
     specs;
-    Ng = 100,
-    Nx = 100,
+    Ng = 1000,
+    Nx = 5000,
     qoi_type = :mean,
     y_star = -1.427,
-    max_iter::Int = 20,
+    max_iter::Int = 25,
     direction::Symbol = :min,
     tol_BO::Float64 = 1e-3,
-    tol_BC::Float64 = 2.5e-2
+    tol_BC::Float64 = 1e-2
 )
     # ── Everything dimension-dependent derives from `specs` ──────────────────
     x_names, w_names, u_names, v_names  = spec_names(specs)
     bounds_u, bounds_v = build_bounds(specs)
+
+    y_symbol = physical_model.name
 
     n_w = length(w_names)
     n_u = length(u_names)
@@ -125,10 +100,12 @@ function cabo_loop(
     bound_history = Float64[]
 
     kernel_type = gp_init.kernel_type
-    N0 = 300 # 1000   # separate, smaller - sized for EOLE eigenbasis resolution
+    N0 = 500 # 1000   # separate, smaller - sized for EOLE eigenbasis resolution
 
-    W_aug, _  = build_augmented_design(nothing, specs, Nx)
-    u_samples = Matrix(W_aug[:, u_names])
+    # W_aug, _  = build_augmented_design(nothing, specs, Nx)
+    # u_samples = Matrix(W_aug[:, u_names])
+
+    u_samples = randn(Nx, n_u)
 
     W_eole, _ = build_augmented_design(nothing, specs, N0)
     W_eole = Matrix(W_eole)
@@ -137,13 +114,14 @@ function cabo_loop(
     for iter in 1:max_iter
 
         W_buffer = Matrix{Float64}(undef, Nx, n_w)
-        @views W_buffer[:, 1:n_u] .= u_samples
         qoi_buffer = Vector{Float64}(undef, Ng)
+
+        @views W_buffer[:, 1:n_u] .= u_samples
 
         W_support    = Matrix(data[:, w_names])
         gp_samples! = build_kl_sampler(gp, W_eole, W_support; N_samples=Ng, Nx=Nx)
         
-        println("\n━━━ CABO Iteration $iter / $max_iter ━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        println("\n━━━ CABO Iteration $iter / $max_iter ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         # ════ Part 1: BO engine ═══════════════════════════════════════════════
         v_data = Matrix(data[:, v_names])
@@ -157,29 +135,21 @@ function cabo_loop(
         res_v = @time "bo objective " Metaheuristics.optimize(
             v -> ei_objective(qoi_buffer, W_buffer, gp_samples!, n_u, qoi_type, v, μ_qoi_star, sign_dir; y_star = y_star),
             bounds_v,
-            make_pso()
+            PSO(N=60)
         )
- 
+
+        L_BO   = -minimum(res_v)
+
         v_plus = minimizer(res_v)
         θ_plus = augmented_to_epistemic(v_plus, specs)
-        L_BO   = -minimum(res_v)
  
-        # μ_qoi_plus, σ_qoi_plus = estimate_propagation_qoi(qoi_type, gp_samples, u_samples, v_plus)
         COV_star = σ_qoi_star / abs(μ_qoi_star + 1e-8)
- 
-       @printf("\n    Incumbent θ* = %s    μ_qoi(θ*) ≈ %.2e    σ_qoi(θ*) ≈ %.2e\n",
-               string(round.(θ_star, digits=3)), μ_qoi_star, σ_qoi_star)
- 
-
-        println("    Acquisition θ⁺ = $(round.(θ_plus, digits=4))    EI = $(round(L_BO, digits=4))" *
-                        "    COV = $(round(COV_star, sigdigits=4))")
-        
 
         # ════ Part 2: BC engine ═══════════════════════════════════════════════
         if qoi_type == :pf
             res_u = @time "u objective " Metaheuristics.optimize(
                 u -> u_objective(gp, u, v_plus, y_star),
-                bounds_u, make_pso()
+                bounds_u, PSO(N=60)
             )            
         else
             W     = Matrix(data[:, w_names])
@@ -190,7 +160,7 @@ function cabo_loop(
     
             res_u = @time "pvc objective " Metaheuristics.optimize(
                 u -> pvc_objective(gp, cholK, W, u, v_plus, W_prime, v2_sum),
-                bounds_u, make_pso()
+                bounds_u, PSO(N=60)
             )
         end
 
@@ -214,23 +184,21 @@ function cabo_loop(
         refit!(gp, reshape(w_plus, 1, :), [y_plus])
 
         # monitoring the current bound
-        # 1. quick one:
-        # v_current_best_index, μ_qoi_current_best, σ_qoi_current_best = best_candidate(qoi_type, gp_samples!, qoi_buffer, W_buffer, n_u, v_data, direction; α=0.0, y_star = y_star)
-        # v_current_best     = Vector(data[v_current_best_index, v_names])
-
-        # μ_qoi_current_best_bound = μ_qoi_current_best[v_current_best_index]
-        # θ_current_best_bound =  augmented_to_epistemic(v_current_best, specs)
-        
-        # 2. more cumbersome
         result = estimate_final_bound(
             gp, data, specs, qoi_type, direction, y_star,
             u_names, v_names, w_names;
-            Nx_final=10_000,
+            Nx_final=50_000,
         )
 
         μ_qoi_current_best_bound = result.μ_bound
         θ_current_best_bound           = result.θ_bound
 
+        @printf("\n    Incumbent θ* = %s    μ_qoi(θ*) ≈ %.2e    σ_qoi(θ*) ≈ %.2e\n",
+               string(round.(θ_star, digits=3)), μ_qoi_star, σ_qoi_star)
+ 
+        println("    Acquisition θ⁺ = $(round.(θ_plus, digits=4))    EI = $(round(L_BO, digits=4))" *
+                        "    COV = $(round(COV_star, sigdigits=4))")
+        
         println("    Current estimated bound: $(round(μ_qoi_current_best_bound, digits=3)) @ θ = $(round.(θ_current_best_bound, digits=3))\n")
         
 
@@ -240,7 +208,7 @@ function cabo_loop(
         push!(L_BC_history, COV_star)
 
         if L_BO < tol_BO && COV_star < tol_BC
-            println("\n✓ converged")
+            println("\n ✓ converged")
             break
         end
 
@@ -250,12 +218,11 @@ function cabo_loop(
     result = estimate_final_bound(
             gp, data, specs, qoi_type, direction, y_star,
             u_names, v_names, w_names;
-            Nx_final=10_000,
+            Nx_final=50_000,
         )
         
     μ_qoi_bound_final = result.μ_bound
     θ_bound           = result.θ_bound
-
 
     push!(bound_history, μ_qoi_bound_final)
 
@@ -270,3 +237,7 @@ function cabo_loop(
     )
 end
 
+
+export
+    estimate_qoi!, best_candidate, estimate_propagation_qoi, estimate_final_bound,
+    cabo_loop

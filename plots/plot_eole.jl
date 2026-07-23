@@ -9,7 +9,6 @@ using KernelFunctions
 using LinearAlgebra
 
 gr()
-Random.seed!(42)
 
 # ---------------------------------------------------------
 # Model + training data
@@ -25,7 +24,7 @@ forrester(x) = (6x - 2)^2 * sin(12x - 4)
 n_train = 10
 design_train = LatinHypercubeSampling(n_train)
 data_train = sample(X, design_train)
-evaluate!(model, data_train)
+UncertaintyQuantification.evaluate!(model, data_train)
 
 gp = GaussianProcess(data_train, :y; kernel_type=GPMatern52())
 fit!(gp)
@@ -80,7 +79,7 @@ end
 # ---------------------------------------------------------
 # EOLE support grid (defines the eigenbasis) and plotting/query grid
 # ---------------------------------------------------------
-N0 = 200
+N0 = 100
 W  = reshape(collect(range(0, 1, length=N0)), :, 1)
 
 n_plot  = 300

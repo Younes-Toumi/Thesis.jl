@@ -25,7 +25,7 @@ domain of the basis polynomials.
 All inputs are assumed to arrive in standard normal space
 (after to_standard_normal_space! transform). Each basis
 then maps to its own domain:
-  Hermite  → identity (domain is already ℝ)
+  Hermite  → identity
   Legendre → normal CDF → Uniform[-1,1]
 """
 function map_to_domain(b::AbstractPCEBasis, x::Vector)
@@ -115,3 +115,8 @@ function build_design_matrix(
 
     return A
 end
+
+
+export
+    HermiteBasis, LegendreBasis,
+    build_design_matrix

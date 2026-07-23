@@ -1,3 +1,7 @@
+"""
+A file containing some quick metrics to test the implemented surrogates.
+"""
+
 mse(y_true, y_pred)  = mean((y_true .- y_pred).^2)
 rmse(y_true, y_pred) = sqrt(mse(y_true, y_pred))
 
@@ -80,3 +84,8 @@ function q2_loo_gp_fast(gp::GaussianProcess)
     ss_tot = sum(abs2, gp.y .- mean(gp.y))
     return 1 - ss_res / ss_tot
 end
+
+
+
+export 
+    mse, rmse, nrmse, q2, q2_loo, q2_loo_gp_fast

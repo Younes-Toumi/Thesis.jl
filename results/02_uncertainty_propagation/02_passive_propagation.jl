@@ -31,7 +31,7 @@ function compare_surrogates_evolution(
     kernel_type = GPMatern52
     bases = fill(SurrogateModelling.HermiteBasis(), length(w_names))
     pce_solver = SurrogateModelling.LASSOSolver
-    pck_degree = QBall(pck_p_max, 0.5)
+    pck_degree = TotalDegree(pck_p_max)
 
     gps     = Array{SurrogateModelling.GaussianProcess}(undef, length(n_trains))
     pcks    = Array{SurrogateModelling.PolynomialChaosKriging}(undef, length(n_trains))
@@ -159,7 +159,7 @@ end
 for (idx, n_train) in enumerate(n_trains)
     result_mean_gp = @time "gp mean: " true_doubleloop(
         gps[idx], [x1, x2];
-        n_total=1*10^7, k=5.0, qoi=:mean, y_star=-1.427,
+        n_total=1*10^6, k=5.0, qoi=:mean, y_star=-1.427,
         surrogate=true, specs=specs
     )
 
@@ -167,7 +167,7 @@ for (idx, n_train) in enumerate(n_trains)
 
     result_mean_pck = @time "pck mean: " true_doubleloop(
         pcks[idx], [x1, x2];
-        n_total=1*10^7, k=5.0, qoi=:mean, y_star=-1.427,
+        n_total=1*10^6, k=5.0, qoi=:mean, y_star=-1.427,
         surrogate=true, specs=specs
     )
 
@@ -175,103 +175,22 @@ for (idx, n_train) in enumerate(n_trains)
 
 
 
-    # result_pf_gp = @time "gp pf: " true_doubleloop(
-    #     gps[idx], [x1, x2];
-    #     n_total=10^8, k=0.01, qoi=:pf, y_star=-1.427,
-    #     surrogate=true, specs=specs
-    # )
+    result_pf_gp = @time "gp pf: " true_doubleloop(
+        gps[idx], [x1, x2];
+        n_total=10^6, k=0.01, qoi=:pf, y_star=-1.427,
+        surrogate=true, specs=specs
+    )
 
-    # println("gp  (n₀ = $n_train): pf = $(round.(result_pf_gp.bounds, digits=3))")
+    println("gp  (n₀ = $n_train): pf = $(round.(result_pf_gp.bounds, digits=3))")
 
 
-    # result_pf_pck = @time "pck pf: " true_doubleloop(
-    #     pcks[idx], [x1, x2];
-    #     n_total=10^8, k=0.01, qoi=:pf, y_star=-1.427,
-    #     surrogate=true, specs=specs
-    # )
+    result_pf_pck = @time "pck pf: " true_doubleloop(
+        pcks[idx], [x1, x2];
+        n_total=10^7, k=0.01, qoi=:pf, y_star=-1.427,
+        surrogate=true, specs=specs
+    )
 
-    # println("pck (n₀ = $n_train): pf = $(round.(result_pf_pck.bounds, digits=3))\n")
+    println("pck (n₀ = $n_train): pf = $(round.(result_pf_pck.bounds, digits=3))\n")
 
 
 end
-
-
-# Gaussian Mixture...
-# currently at n_train = 50 ...
-# currently at n_train = 100 ...
-# currently at n_train = 150 ...
-# currently at n_train = 200 ...
-# currently at n_train = 250 ...
-# currently at n_train = 300 ...
-# currently at n_train = 400 ...
-# currently at n_train = 500 ...
-# gp mean: : 139.176813 seconds (5.81 M allocations: 267.042 GiB, 48.14% gc time)
-# gp  (n₀ = 50): bounds = [-1.267, 1.519]
-# pce mean: : 267.067228 seconds (800.51 M allocations: 171.394 GiB, 24.07% gc time)
-# pce (n₀ = 50): bounds = [-0.322, 0.327]
-# pck mean: : 220.957890 seconds (800.91 M allocations: 330.887 GiB, 41.57% gc time)
-# pck (n₀ = 50): bounds = [-1.267, 1.515]
-
-# gp pf: : 222.876968 seconds (31.34 M allocations: 669.267 GiB, 30.51% gc time)
-# gp  (n₀ = 50): pf = [0.0, 0.0]
-# pce pf: : 509.750078 seconds (2.02 G allocations: 429.197 GiB, 15.41% gc time)
-# pce (n₀ = 50): pf = [0.0, 0.003]
-# pck pf: : 413.106095 seconds (2.03 G allocations: 829.219 GiB, 29.92% gc time)
-# pck (n₀ = 50): pf = [0.0, 0.0]
-
-# gp mean: : 314.375854 seconds (860.42 k allocations: 490.367 GiB, 48.73% gc time)
-# gp  (n₀ = 100): bounds = [-1.362, 1.275]
-# pce mean: : 296.758088 seconds (800.45 M allocations: 171.391 GiB, 22.72% gc time)
-# pce (n₀ = 100): bounds = [-0.352, 0.321]
-# pck mean: : 400.410917 seconds (800.76 M allocations: 554.439 GiB, 45.89% gc time)
-# pck (n₀ = 100): bounds = [-1.31, 1.249]
-
-# gp pf: : 467.439821 seconds (31.53 M allocations: 1.200 TiB, 38.08% gc time)
-# gp  (n₀ = 100): pf = [0.0, 0.382]
-# pce pf: : 508.464959 seconds (2.02 G allocations: 429.197 GiB, 15.17% gc time)
-# pce (n₀ = 100): pf = [0.0, 0.001]
-# pck pf: : 680.939682 seconds (2.03 G allocations: 1.357 TiB, 37.07% gc time)
-# pck (n₀ = 100): pf = [0.0, 0.053]
-
-# gp mean: : 471.249439 seconds (860.42 k allocations: 713.927 GiB, 54.46% gc time)
-# gp  (n₀ = 150): bounds = [-1.329, 1.258]
-# pce mean: : 291.281369 seconds (800.45 M allocations: 171.391 GiB, 24.43% gc time)
-# pce (n₀ = 150): bounds = [-1.61, 1.061]
-# pck mean: : 655.752563 seconds (800.76 M allocations: 777.999 GiB, 49.95% gc time)
-# pck (n₀ = 150): bounds = [-1.286, 1.219]
-
-# gp pf: : 941.554759 seconds (31.53 M allocations: 1.747 TiB, 35.96% gc time)
-# gp  (n₀ = 150): pf = [0.0, 0.059]
-# pce pf: : 612.985574 seconds (2.02 G allocations: 429.197 GiB, 14.19% gc time)
-# pce (n₀ = 150): pf = [0.0, 1.0]
-# pck pf: : 1271.989829 seconds (2.03 G allocations: 1.903 TiB, 37.33% gc time)
-# pck (n₀ = 150): pf = [0.0, 0.021]
-
-# gp mean: : 766.590306 seconds (860.42 k allocations: 937.486 GiB, 54.77% gc time)
-# gp  (n₀ = 200): bounds = [-1.372, 1.304]
-# pce mean: : 307.428382 seconds (800.45 M allocations: 171.391 GiB, 24.81% gc time)
-# pce (n₀ = 200): bounds = [-0.409, 0.312]
-# pck mean: : 854.881246 seconds (800.76 M allocations: 1001.557 GiB, 50.83% gc time)
-# pck (n₀ = 200): bounds = [-1.371, 1.304]
-
-# gp pf: : 1411.338667 seconds (31.53 M allocations: 2.294 TiB, 39.27% gc time)
-# gp  (n₀ = 200): pf = [0.0, 0.395]
-# pce pf: : 617.234721 seconds (2.02 G allocations: 429.197 GiB, 14.50% gc time)
-# pce (n₀ = 200): pf = [0.0, 0.0]
-# pck pf: : 1655.695031 seconds (2.03 G allocations: 2.450 TiB, 38.02% gc time)
-# pck (n₀ = 200): pf = [0.0, 0.39]
-
-# gp mean: : 896.116493 seconds (860.42 k allocations: 1.134 TiB, 51.52% gc time)
-# gp  (n₀ = 250): bounds = [-1.33, 1.358]
-# pce mean: : 313.420221 seconds (800.45 M allocations: 171.391 GiB, 24.62% gc time)
-# pce (n₀ = 250): bounds = [-0.708, 0.686]
-# pck mean: : 1104.062678 seconds (800.76 M allocations: 1.196 TiB, 53.04% gc time)
-# pck (n₀ = 250): bounds = [-1.321, 1.359]
-
-# gp pf: : 1733.444673 seconds (31.53 M allocations: 2.841 TiB, 38.05% gc time)
-# gp  (n₀ = 250): pf = [0.0, 0.03]
-# pce pf: : 604.110104 seconds (2.02 G allocations: 429.197 GiB, 13.69% gc time)
-# pce (n₀ = 250): pf = [0.0, 0.003]
-# pck pf: : 1928.540848 seconds (2.03 G allocations: 2.997 TiB, 35.02% gc time)
-# pck (n₀ = 250): pf = [0.0, 0.048]
-

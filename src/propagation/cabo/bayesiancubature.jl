@@ -1,5 +1,3 @@
-# mean and var related
-
 function precompute_h_pvc_terms(gp, cholK, W, v_plus::AbstractVector, u_samples)
     
     kern = gp.kernel_posterior
@@ -39,3 +37,8 @@ function u_objective(gp, u::AbstractVector, v_plus::AbstractVector, y_star::Floa
     μ_w, σ_w = predict(gp, reshape(w, 1, :), mode=:mean_and_var)
     return abs(μ_w[1] - y_star) / max(σ_w[1], 1e-10)
 end
+
+
+export 
+    precompute_h_pvc_terms, h_pvc, pvc_objective, u_objective
+    

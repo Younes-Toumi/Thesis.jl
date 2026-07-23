@@ -1,10 +1,20 @@
+"""
+File containing some analytical UQ models using during the thesis. 
+
+Forrester:  f(x)            = (6x - 2)² sin(12x - 4)
+Himmelblau: f(x₁, x₂)       = (x₁² + x₂ - 11)² + (x₁ + x₂² - 7)²
+Ishigami:   f(x₁, x₂, x₃)   = sin(x₁) + 7 sin(x₂)² + 0.1 x₃⁴ sin(x₁)
+Gaussian Mixture:
+            g(x₁, x₂)       = Σ γᵢ exp(-αᵢ₁ (x₁ - βᵢ₁)² - αᵢ₂ (x₂ - βᵢ₂)²)
+"""
+
 model_ishigami = Model(
     df -> sin.(df.x1) .+ 7.0 .* sin.(df.x2).^2 .+ 0.1 .* (df.x3).^4 .* sin.(df.x1),
     :y
 )
 
 model_forrester = Model(
-    df -> (6 .* df.x1 .- 2).^2 .* sin.(12 .* df.x1 .- 4),
+    df -> (6 .* df.x .- 2).^2 .* sin.(12 .* df.x .- 4),
     :y
 )
 
@@ -25,39 +35,15 @@ model_gfunction = Model(
     :y
 )
 
-
 model_simple = Model(
-    df -> df.x1 .- df.x2 .+ 2,
+    df -> df.x1 .- df.x2 - -2,
     :y
 )
 
-
-function ishigami(
-    x1::Float64, x2::Float64, x3::Float64;
-    a::Float64 = 7.0,
-    b::Float64 = 0.1)
-
-    return sin(x1) + a * sin(x2)^2 + b * x3^4 * sin(x1)
-end
-
-function forrester(x::Float64)
-    return (6 * x - 2)^2 * sin(12 * x - 4)
-end
-
-
-function g_function(x1::Float64, x2::Float64)
-    α_g = [2.0 3.0 1.0 4.0; 3.0 2.0 4.0 1.0]
-    β_g = [-0.5 0.5 -0.5 0.5; -0.5 -0.5 0.5 0.5]
-    c_g = [1.0, -1.5, -1.5, 2.0]
-
-    result = 0.0
-    for i in 1:4
-        result += c_g[i] * exp(-α_g[1,i] * (x1 - β_g[1,i])^2 - α_g[2,i] * (x2 - β_g[2,i])^2)
-    end
-    return result
-end
-
-
+model_himmelblau = Model(
+    df -> (df.x1 .^ 2 .+ df.x2 .- 11) .^ 2 .+ (df.x1 .+ df.x2 .^ 2 .- 7) .^ 2,
+    :y
+)
 
 function g_function_E(μ1::Float64, μ2::Float64; σ::Float64 = 0.1)
     α_g = [2.0 3.0 1.0 4.0; 3.0 2.0 4.0 1.0]'
@@ -95,3 +81,9 @@ function g_function_E(μ1::Float64, μ2::Float64; σ::Float64 = 0.1)
 
     return result
 end
+
+
+
+export
+    model_ishigami, model_forrester, model_gfunction, model_simple, model_himmelblau,
+    g_function_E

@@ -18,22 +18,18 @@ using PlotlyJS
 using DataFrames
 
 # 1. defining inputs X: X = [x₁, x₂]
-x1 = RandomVariable.(Uniform(-5, 5), :x1);
-x2 = RandomVariable.(Uniform(-5, 5), :x2);
+x1 = RandomVariable.(Uniform(-2, 2), :x1);
+x2 = RandomVariable.(Uniform(-2, 2), :x2);
 X = [x1, x2]
 
 # 2. defining :y
-model = Model(
-    rv -> (rv.x1 .^ 2 .+ rv.x2 .- 11) .^ 2 .+ (rv.x1 .+ rv.x2 .^ 2 .- 7) .^ 2,
-    :y
-) # himmelblau
-
+model = model_gfunction
 # 3. defining two sampling strategy
-design = LatinHypercubeSampling(500)
+design = LatinHypercubeSampling(5000)
 
 # 4. generating training data
 data_train = sample(X, design) # uses the desing to sample input
-evaluate!(model, data_train) # modifies input `data_train` to add ouput `y`
+UncertaintyQuantification.evaluate!(model, data_train) # modifies input `data_train` to add ouput `y`
 
 
 # ── infer input column names ──────────────────────────────
@@ -46,9 +42,9 @@ x2_vals = data_train[:, x2_name]
 y_vals  = data_train[:, :y]
 
 # ── build grid for surface ────────────────────────────────
-x1_lim = [0.95*minimum(x1_vals), 1.05*maximum(x1_vals)]
-x2_lim = [0.95*minimum(x2_vals), 1.05*maximum(x2_vals)]
-y_lim =  [0.95*minimum(y_vals), 1.05*maximum(y_vals)]
+x1_lim = [minimum(x1_vals), maximum(x1_vals)]
+x2_lim = [minimum(x2_vals), maximum(x2_vals)]
+y_lim =  [minimum(y_vals), maximum(y_vals)]
 
 # ── interpolate onto grid using nearest neighbour ─────────
 # simple approach: build surface from scattered data_train via triangulation

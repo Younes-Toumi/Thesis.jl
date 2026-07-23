@@ -80,3 +80,6 @@ function build_kl_sampler(gp, W::Matrix{Float64}, X_train::Matrix{Float64};
         return qoi_buffer
     end
 end
+
+export 
+    build_kl_sampler

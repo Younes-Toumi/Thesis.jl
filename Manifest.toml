@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "1c1014b01a7b2125e21c9a7eba571d63c9886761"
+project_hash = "7146089e2b1315c002b0b7d70c442ad1350bbb52"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -1929,7 +1929,7 @@ uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
 version = "7.8.3+2"
 
 [[deps.SurrogateModelling]]
-deps = ["ADTypes", "AbstractGPs", "Clustering", "DataFrames", "DifferentiationInterface", "Distributions", "FastGaussQuadrature", "ForwardDiff", "IntervalArithmetic", "KernelFunctions", "LinearAlgebra", "Metaheuristics", "Mooncake", "Optim", "ParameterHandling", "PlotlyJS", "PlotlyLight", "Plots", "Printf", "QuasiMonteCarlo", "Random", "Statistics", "StatsPlots", "UncertaintyQuantification", "Zygote"]
+deps = ["ADTypes", "AbstractGPs", "BenchmarkTools", "Clustering", "DataFrames", "DifferentiationInterface", "Distributions", "FastGaussQuadrature", "ForwardDiff", "IntervalArithmetic", "KernelFunctions", "LinearAlgebra", "Metaheuristics", "Mooncake", "Optim", "ParameterHandling", "PlotlyJS", "PlotlyLight", "Plots", "Printf", "QuasiMonteCarlo", "Random", "Statistics", "StatsPlots", "UncertaintyQuantification", "Zygote"]
 path = "."
 uuid = "48446d74-721d-438e-b46c-e6dedc4d0f53"
 version = "0.1.0"
