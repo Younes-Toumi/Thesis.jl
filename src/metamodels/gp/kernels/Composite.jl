@@ -55,6 +55,12 @@ function default_θ(k::ScaledGPKernel, X::Matrix, y::Vector)
     return merge(θ, (variance = positive(k.scale * ParameterHandling.value(θ.variance)),))
 end
 
+function default_θ0(k::ScaledGPKernel, X::Matrix, y::Vector)
+    # scale the variance initialisation by the scalar
+    θ0 = default_θ0(k.kernel, X, y)
+    return merge(θ0, (variance = k.scale * θ0.variance),)
+end
+
 function build_kernel(k::ScaledGPKernel, θ::NamedTuple)
     return k.scale * build_kernel(k.kernel, θ)
 end

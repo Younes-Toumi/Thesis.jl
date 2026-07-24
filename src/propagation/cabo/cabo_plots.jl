@@ -43,7 +43,7 @@ function plot_epistemic_landscape(
     if grid_bounds === nothing
         parts = filter(!isnothing, [init_θ, min_added_θ, max_added_θ])
         all_pts = isempty(parts) ? zeros(0, d) : vcat(parts...)
-        grid_bounds = [ (minimum(all_pts[:, k]) - 0.1, maximum(all_pts[:, k]) + 0.1) for k in 1:d ]
+        grid_bounds = [ (minimum(all_pts[:, k]), maximum(all_pts[:, k])) for k in 1:d ]
     end
 
     common = (init_θ=init_θ, min_added_θ=min_added_θ, max_added_θ=max_added_θ,

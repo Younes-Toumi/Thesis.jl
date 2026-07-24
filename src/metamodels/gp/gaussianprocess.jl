@@ -32,6 +32,7 @@ mutable struct GaussianProcess <: UQModel
 
     mean_type:: AbstractGPMean
     kernel_type:: AbstractGPKernel
+    θ0::NamedTuple
     θ::NamedTuple
     flat_θ::Vector{Float64}
 
@@ -99,13 +100,14 @@ function GaussianProcess(
     y = Vector(data[:, y_symbol])
 
     # Infer starting values from data if not provided (avoids flat/degenerate regions)
-    θ0 = isnothing(θ) ? default_θ(kernel_type, X, y) : θ
+    θ0 = isnothing(θ) ? default_θ0(kernel_type, X, y) : θ
+    θ = isnothing(θ) ? default_θ(kernel_type, X, y) : θ
 
     # Optim.jl needs a flat Vector{Float64}; unflatten reconstructs the NamedTuple after optimisation
-    flat_θ0, unflatten = value_flatten(θ0)
+    flat_θ, unflatten = value_flatten(θ)
 
     mean_prior = build_mean(mean_type, X, y)
-    kernel_prior = build_kernel(kernel_type, unflatten(flat_θ0))
+    kernel_prior = build_kernel(kernel_type, unflatten(flat_θ))
 
     return GaussianProcess(
         X,
@@ -113,7 +115,8 @@ function GaussianProcess(
         mean_type,
         kernel_type,
         θ0,
-        flat_θ0,
+        θ,
+        flat_θ,
         nothing,
         y_symbol,
         x_names,
@@ -177,7 +180,6 @@ function fit!(gp::GaussianProcess)
 
         # when learn_noise = true  -> σ² is a free parameter (noisy observations) else 1e-8
         noise = gp.learn_noise ? θ.noise : 1e-8
-
         fx = f(Xt, noise)
 
         val = -logpdf(fx, gp.y) # negative because Optim.jl minimises
@@ -335,7 +337,7 @@ function refit!(gp::GaussianProcess, X_new::AbstractMatrix{Float64}, y_new::Abst
 
     gp.θ         = θ_opt
     gp.posterior = posterior(fx, gp.y)
-    gp.flat_θ = best.minimizer    # ← store the UNCONSTRAINED optimum
+    gp.flat_θ = best.minimizer    # ← store the unconstrained optimum
     gp.mean_posterior = x -> mean(gp.posterior(x))
     gp.kernel_posterior = build_kernel(gp.kernel_type, θ_opt)
 
@@ -414,7 +416,7 @@ function predict(
         return μ, sqrt.(v)                          # (mean, STD) preserves existing convention
 
     elseif mode === :sample
-        fp = gp.posterior(Xrows)                    # full joint covariance
+        fp = gp.posterior(Xrows, 1e-8)                    # full joint covariance
         return rand(fp, n_samples)                  # n_points × n_samples
 
     else

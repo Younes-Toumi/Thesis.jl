@@ -68,6 +68,17 @@ function build_kl_sampler(gp, W::Matrix{Float64}, X_train::Matrix{Float64};
             mul!(qoi_buffer, coeff_mat', kW_post_mean_buf)   # writes directly into qoi_buffer
             qoi_buffer .+= mean(μ_q)
 
+
+        elseif qoi_type === :samples
+            # Raw (Nx × Ng) realization matrix - same column convention as
+            # predict(gp, X; mode=:sample): each column is one full realization's
+            # values across all Nx query points. `qoi_buffer` must be a preallocated
+            # Matrix{Float64}(undef, Nx, Ng) for this mode, NOT a Vector - unlike
+            # every other mode, there's nothing to reduce to a scalar here.
+            mul!(qoi_buffer, K_qW_post_buf, coeff_mat)   # ONE gemm: (Nx×N0) * (N0×Ng) -> (Nx×Ng)
+            qoi_buffer .+= μ_q                            # broadcasts the Nx-vector across every column
+
+
         else  # :var or :pf — one realization at a time, one small reused buffer
             Threads.@threads :static for s in 1:Ng
                 buf = realization_bufs[Threads.threadid()]

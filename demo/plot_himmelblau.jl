@@ -18,12 +18,12 @@ using PlotlyJS
 using DataFrames
 
 # 1. defining inputs X: X = [x₁, x₂]
-x1 = RandomVariable.(Uniform(-2, 2), :x1);
-x2 = RandomVariable.(Uniform(-2, 2), :x2);
+x1 = RandomVariable.(Uniform(-3.2, 3.2), :x1);
+x2 = RandomVariable.(Uniform(-3.2, 3.2), :x2);
 X = [x1, x2]
 
 # 2. defining :y
-model = model_gfunction
+model = model_himmelblau
 # 3. defining two sampling strategy
 design = LatinHypercubeSampling(5000)
 

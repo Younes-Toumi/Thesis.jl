@@ -12,6 +12,11 @@ function default_θ(k::AbstractGPKernel, ::Matrix, ::Vector)
     error("default_θ not implemented for kernel $(typeof(k)). ")
 end
 
+function default_θ0(k::AbstractGPKernel, ::Matrix, ::Vector)
+    error("default_θ0 not implemented for kernel $(typeof(k)). ")
+end
+
+
 function build_kernel(k::AbstractGPKernel, ::NamedTuple)
     error("build_kernel not implemented for kernel $(typeof(k)). ")
 end
@@ -67,17 +72,37 @@ function default_ard_θ(X::Matrix, y::Vector)
     l_max = max_pairwise_distance(X)        # blocks l → ∞
 
     l = clamp.(l, l_min, l_max)
-    σ² = clamp.(σ², 1e-10, 1e10) # safeguad against σ² = 0
+    σ² = clamp.(σ², 1e-9, 100*σ²) # safeguad against σ² = 0
 
     return (
         lengthscale = ParameterHandling.bounded(l, l_min, l_max),
-        variance    = ParameterHandling.bounded(σ², 1e-12, 1e12),
+        variance    = ParameterHandling.bounded(σ², 1e-9, 100*σ²),
         noise       = ParameterHandling.positive(1e-7),
     )
 end
 
+function default_ard_θ0(X::Matrix, y::Vector)
+    d  = size(X, 2)
+    σ² = var(y)
+
+    l = [median_pairwise_distance(X[:, j:j]) for j in 1:d]   # one l per input    
+
+    l_min = 0.1 * min_pairwise_distance(X)  # blocks l → 0
+    l_max = max_pairwise_distance(X)        # blocks l → ∞
+
+    l = clamp.(l, l_min, l_max)
+    σ² = clamp.(σ², 1e-9, 100*σ²) # safeguad against σ² = 0
+
+    return (
+        lengthscale = l,
+        variance    = σ²,
+        noise       = 1e-7,
+    )
+end
+
+
 export 
     build_kernel,
     GPSquaredExponential, GPMatern52, GPMatern32, GPMatern12, GPCompositeKernel
-    kernel_name, default_θ, default_ard_θ, build_kernel,
+    kernel_name, default_θ, default_ard_θ,  default_θ0, default_ard_θ0, build_kernel,
     median_pairwise_distance, min_pairwise_distance, max_pairwise_distance

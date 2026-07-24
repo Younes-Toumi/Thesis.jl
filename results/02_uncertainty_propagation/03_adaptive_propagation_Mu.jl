@@ -15,7 +15,7 @@ specs = InputSpec.([x1, x2])     # broadcasts dispatch over each UQ.jl input
 x_names, w_names, u_names, v_names = spec_names(specs)
 physical_model = model_gfunction
 
-data_aug_train, data_phys_train =    build_augmented_design(physical_model, specs, 30)
+data_aug_train, data_phys_train =    build_augmented_design(physical_model, specs, 40)
 data_aug_test,  data_phys_test  =    build_augmented_design(physical_model, specs, 1001)
 
 

@@ -222,8 +222,6 @@ function build_augmented_design(
     end
     n_epi_total = col
 
-    # Random.seed!(seed)
-
     # Sample over the TRUE bounds, not the relaxed ones.
     θ_samples = n_epi_total > 0 ?
         QuasiMonteCarlo.sample(n_samples, raw_lbs, raw_ubs, LatinHypercubeSample())' :
